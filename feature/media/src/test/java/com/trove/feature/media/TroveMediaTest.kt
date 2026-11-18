@@ -23,7 +23,7 @@ class TroveMediaTest {
             override val size: Long = content.size.toLong()
             override val lastModified: Long = System.currentTimeMillis()
             override val isDirectory: Boolean = false
-            override val permissions: PosixPermissions = PosixPermissions(0)
+            override val permissions: PosixPermissions = PosixPermissions.DEFAULT
             override val mimeType: String = ""
 
             override suspend fun listFiles(): Result<List<FileItem>> = Result.Success(emptyList())

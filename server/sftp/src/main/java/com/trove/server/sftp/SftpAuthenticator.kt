@@ -1,7 +1,6 @@
 package com.trove.server.sftp
 
 import com.trove.core.crypto.auth.CredentialManager
-import org.apache.sshd.server.auth.AsyncAuthSupport
 import org.apache.sshd.server.auth.password.PasswordAuthenticator
 import org.apache.sshd.server.auth.pubkey.PublickeyAuthenticator
 import org.apache.sshd.server.session.ServerSession

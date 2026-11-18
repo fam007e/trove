@@ -1,9 +1,8 @@
 package com.trove.core.crypto
 
 import android.content.Context
-import android.util.Base64
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import android.content.SharedPreferences
+import java.util.Base64
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator
 import org.bouncycastle.crypto.params.Argon2Parameters
 import java.security.SecureRandom
@@ -25,20 +24,10 @@ object KeyDerivation {
     private const val PARALLELISM = 4
     private const val KEY_LENGTH = 32 // 256 bits
     private const val SALT_KEY = "vault_kdf_salt"
-    private const val ENCRYPTED_PREFS_NAME = "trove_secure_vault_meta"
+    private const val PREFS_NAME = "trove_vault_meta"
 
-    private fun getEncryptedPrefs(context: Context): EncryptedSharedPreferences {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        
-        return EncryptedSharedPreferences.create(
-            context,
-            ENCRYPTED_PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        ) as EncryptedSharedPreferences
+    private fun getPrefs(context: Context): SharedPreferences {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
     fun deriveKey(passphrase: String, salt: ByteArray): SecretKey {
@@ -62,15 +51,15 @@ object KeyDerivation {
         val salt = ByteArray(16) // 128-bit salt is standard for Argon2
         SecureRandom().nextBytes(salt)
         
-        getEncryptedPrefs(context).edit()
-            .putString(SALT_KEY, Base64.encodeToString(salt, Base64.NO_WRAP))
+        getPrefs(context).edit()
+            .putString(SALT_KEY, Base64.getEncoder().encodeToString(salt))
             .apply()
             
         return salt
     }
 
     fun getStoredSalt(context: Context): ByteArray? {
-        val encoded = getEncryptedPrefs(context).getString(SALT_KEY, null) ?: return null
-        return Base64.decode(encoded, Base64.NO_WRAP)
+        val encoded = getPrefs(context).getString(SALT_KEY, null) ?: return null
+        return Base64.getDecoder().decode(encoded)
     }
 }

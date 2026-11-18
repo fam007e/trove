@@ -15,8 +15,9 @@ import java.io.OutputStream
 import java.io.IOException
 import java.io.StringReader
 import java.net.URLDecoder
-import org.xmlpull.v1.XmlPullParser
-import org.xmlpull.v1.XmlPullParserFactory
+import javax.xml.parsers.DocumentBuilderFactory
+import org.w3c.dom.Element
+import org.xml.sax.InputSource
 
 /**
  * FileItem implementation for WebDAV.
@@ -56,7 +57,6 @@ class WebDavFileItem(
             if (response.status == HttpStatusCode.MultiStatus) {
                 val body = response.bodyAsText()
                 val files = parsePropFindResponse(body)
-                // Filter out the current directory
                 val currentPathString: String = this@WebDavFileItem.path
                 Result.Success(files.filter { (it as WebDavFileItem).path != currentPathString })
             } else {
@@ -70,95 +70,74 @@ class WebDavFileItem(
     private fun parsePropFindResponse(xml: String): List<WebDavFileItem> {
         val items = mutableListOf<WebDavFileItem>()
         try {
-            val factory = XmlPullParserFactory.newInstance().apply {
-                isNamespaceAware = false
-                // Security: Disable DOCTYPE and external entity processing (XXE CWE-611 / XML Entity Bomb defense)
+            val dbf = DocumentBuilderFactory.newInstance().apply {
+                isNamespaceAware = true
                 try {
-                    setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false)
+                    // Security: Disable DOCTYPE and external entity processing (XXE CWE-611 / XML Entity Bomb defense)
+                    setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+                    setFeature("http://xml.org/sax/features/external-general-entities", false)
+                    setFeature("http://xml.org/sax/features/external-parameter-entities", false)
                 } catch (_: Exception) {
-                    // Feature may not be supported by all implementations
                 }
             }
-            val parser = factory.newPullParser()
-            parser.setInput(StringReader(xml))
+            val builder = dbf.newDocumentBuilder()
+            val doc = builder.parse(InputSource(StringReader(xml)))
+            
+            val responseNodes = if (doc.getElementsByTagNameNS("*", "response").length > 0) {
+                doc.getElementsByTagNameNS("*", "response")
+            } else {
+                doc.getElementsByTagName("response")
+            }
 
-            var inResponse = false
-            var inProp = false
-            var inResourceType = false
+            val prefixToRemove = if (baseUrl.contains("://")) {
+                val pathPart = baseUrl.substringAfter("://").substringAfter("/", "")
+                if (pathPart.isNotEmpty()) "/$pathPart" else ""
+            } else ""
 
-            var currentHref: String? = null
-            var currentDisplayName: String? = null
-            var currentLength: Long = 0L
-            var isDir = false
-
-            var eventType = parser.eventType
-            while (eventType != XmlPullParser.END_DOCUMENT) {
-                val rawName = parser.name ?: ""
-                val tagName = rawName.substringAfterLast(':').lowercase()
-
-                when (eventType) {
-                    XmlPullParser.START_TAG -> {
-                        when (tagName) {
-                            "response" -> {
-                                inResponse = true
-                                currentHref = null
-                                currentDisplayName = null
-                                currentLength = 0L
-                                isDir = false
-                            }
-                            "prop" -> inProp = true
-                            "resourcetype" -> inResourceType = true
-                            "collection" -> {
-                                if (inResourceType) isDir = true
-                            }
-                            "href" -> {
-                                if (inResponse && currentHref == null) {
-                                    currentHref = parser.nextText()
-                                }
-                            }
-                            "displayname" -> {
-                                if (inProp) {
-                                    currentDisplayName = parser.nextText()
-                                }
-                            }
-                            "getcontentlength" -> {
-                                if (inProp) {
-                                    currentLength = parser.nextText()?.toLongOrNull() ?: 0L
-                                }
-                            }
-                        }
-                    }
-                    XmlPullParser.END_TAG -> {
-                        when (tagName) {
-                            "resourcetype" -> inResourceType = false
-                            "prop" -> inProp = false
-                            "response" -> {
-                                inResponse = false
-                                currentHref?.let { href ->
-                                    val decodedPath = URLDecoder.decode(href, "UTF-8")
-                                        .removePrefix(baseUrl.substringAfter("://").substringAfter("/"))
-                                        .removePrefix(baseUrl)
-                                        .let { if (it.isEmpty()) "/" else it }
-
-                                    val name = currentDisplayName
-                                        ?: decodedPath.trimEnd('/').substringAfterLast('/')
-
-                                    items.add(
-                                        WebDavFileItem(
-                                            client,
-                                            baseUrl,
-                                            decodedPath,
-                                            name,
-                                            currentLength,
-                                            _isDirectory = isDir
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                    }
+            for (i in 0 until responseNodes.length) {
+                val respElem = responseNodes.item(i) as? Element ?: continue
+                
+                val hrefNodes = if (respElem.getElementsByTagNameNS("*", "href").length > 0) {
+                    respElem.getElementsByTagNameNS("*", "href")
+                } else {
+                    respElem.getElementsByTagName("href")
                 }
-                eventType = parser.next()
+                val rawHref = hrefNodes.item(0)?.textContent?.trim() ?: continue
+
+                val decodedPath = URLDecoder.decode(rawHref, "UTF-8")
+                    .let { if (prefixToRemove.isNotEmpty()) it.removePrefix(prefixToRemove) else it }
+                    .removePrefix(baseUrl)
+                    .let { if (it.isEmpty()) "/" else it }
+
+                val displayNodes = if (respElem.getElementsByTagNameNS("*", "displayname").length > 0) {
+                    respElem.getElementsByTagNameNS("*", "displayname")
+                } else {
+                    respElem.getElementsByTagName("displayname")
+                }
+                val name = displayNodes.item(0)?.textContent?.trim()
+                    ?: decodedPath.trimEnd('/').substringAfterLast('/')
+
+                val hasCollection = (respElem.getElementsByTagNameNS("*", "collection").length > 0) ||
+                                    (respElem.getElementsByTagName("collection").length > 0)
+                val isDir = hasCollection || decodedPath.endsWith('/')
+
+                val lengthNodes = if (respElem.getElementsByTagNameNS("*", "getcontentlength").length > 0) {
+                    respElem.getElementsByTagNameNS("*", "getcontentlength")
+                } else {
+                    respElem.getElementsByTagName("getcontentlength")
+                }
+                val length = lengthNodes.item(0)?.textContent?.trim()?.toLongOrNull() ?: 0L
+
+                items.add(
+                    WebDavFileItem(
+                        client,
+                        baseUrl,
+                        decodedPath,
+                        name,
+                        length,
+                        _isDirectory = isDir
+                    )
+                )
             }
         } catch (_: Exception) {
         }

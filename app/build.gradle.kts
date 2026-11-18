@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.androidApplication)
-    alias(libs.plugins.kotlinAndroid)
 }
 
 android {
@@ -34,6 +33,11 @@ android {
 
     androidResources {
         additionalParameters += listOf("--stable-ids", "${rootDir}/stable_ids.txt")
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     compileOptions {

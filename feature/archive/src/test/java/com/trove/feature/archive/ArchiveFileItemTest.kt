@@ -87,6 +87,6 @@ class ArchiveFileItemTest {
         assertNotNull(pathNode)
         val fileNode = pathNode!!.findChild("file.dat")
         assertNotNull(fileNode)
-        assertEquals("windows/style/path/file.dat", fileNode.entryPath)
+        assertEquals("windows/style/path/file.dat", fileNode!!.entryPath)
     }
 }

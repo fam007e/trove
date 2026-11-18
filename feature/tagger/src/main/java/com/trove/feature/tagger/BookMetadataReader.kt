@@ -216,7 +216,7 @@ object BookMetadataReader : TroveMetadataEditor {
             try {
                 val bytes = raw.readBytes()
                 if (bytes.size < 78) {
-                    return@use Result.Failure<MetadataBundle>(
+                    return@use Result.Failure(
                         IllegalStateException("File too small for MOBI format")
                     )
                 }

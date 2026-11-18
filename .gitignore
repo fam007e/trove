@@ -15,7 +15,8 @@ bin/
 gen/
 out/
 build/
-*/build/
+**/build/
+.kotlin/
 
 # Gradle files
 .gradle/

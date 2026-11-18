@@ -120,7 +120,7 @@ object ImageMetadataEditor : TroveMetadataEditor {
         bundle: MetadataBundle
     ): Result<Unit> = withContext(Dispatchers.IO) {
         if (!canEdit(item)) {
-            return@withContext Result.Failure<Unit>(
+            return@withContext Result.Failure(
                 UnsupportedOperationException(
                     "EXIF write not supported for ${item.name}"
                 )

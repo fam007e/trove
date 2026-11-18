@@ -183,7 +183,7 @@ class TrovePlayerActivity : AppCompatActivity() {
 
         val mediaItems = paths.mapNotNull { path ->
             val item = TroveMediaRegistry.get(path) ?: return@mapNotNull null
-            val uri = TroveMediaRegistry.register(item)
+            val uri = TroveMediaRegistry.register(item) ?: return@mapNotNull null
             MediaItem.Builder()
                 .setUri(uri)
                 .setMediaId(path)

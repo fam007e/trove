@@ -1,0 +1,17 @@
+# Proguard rules for :app
+-dontwarn java.awt.**
+-dontwarn javax.imageio.**
+-dontwarn java.lang.management.**
+-dontwarn javax.management.**
+-dontwarn javax.swing.**
+-dontwarn org.apache.log4j.**
+-dontwarn org.apache.logging.log4j.**
+-dontwarn org.eclipse.jetty.npn.**
+-dontwarn reactor.blockhound.**
+-dontwarn io.netty.**
+-dontwarn org.apache.sshd.**
+-dontwarn org.bouncycastle.**
+-dontwarn com.hierynomus.**
+-dontwarn org.slf4j.**
+-dontwarn sun.misc.**
+-dontwarn com.gemalto.jp2.**

@@ -1,2 +1,0 @@
-# AAPT2 stable IDs map file. This file will be updated deterministically
-# during compile-time to map resources to permanent numeric IDs.

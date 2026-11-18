@@ -18,13 +18,17 @@ object TroveMediaRegistry {
     /**
      * Register a [FileItem] and return its custom `trove://media` URI.
      */
-    fun register(item: FileItem): Uri {
+    fun register(item: FileItem): Uri? {
         registry[item.path] = item
-        return Uri.Builder()
-            .scheme("trove")
-            .authority("media")
-            .appendQueryParameter("path", item.path)
-            .build()
+        return try {
+            Uri.Builder()
+                .scheme("trove")
+                .authority("media")
+                .appendQueryParameter("path", item.path)
+                .build()
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     /**

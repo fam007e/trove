@@ -1,6 +1,6 @@
 package com.trove.core.crypto
 
-import android.util.Base64
+import java.util.Base64
 
 /**
  * Clean-room parser for legacy MiXplorer EncFS configuration files (`.encfs6.xml`).
@@ -28,11 +28,11 @@ data class EncFsConfig(
             
             val saltBase64 = extractTag(xml, "saltData")
                 ?: throw IllegalArgumentException("Missing saltData in EncFS config")
-            val salt = Base64.decode(saltBase64.trim(), Base64.DEFAULT)
+            val salt = Base64.getDecoder().decode(saltBase64.trim())
 
             val keyDataBase64 = extractTag(xml, "encodedKeyData")
                 ?: throw IllegalArgumentException("Missing encodedKeyData in EncFS config")
-            val encodedKeyData = Base64.decode(keyDataBase64.trim(), Base64.DEFAULT)
+            val encodedKeyData = Base64.getDecoder().decode(keyDataBase64.trim())
 
             val nameCoding = extractTag(xml, "nameCoding") ?: "nameio/block"
 

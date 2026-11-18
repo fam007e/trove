@@ -9,6 +9,7 @@ import org.jaudiotagger.audio.AudioHeader
 import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.Tag
 import org.jaudiotagger.tag.images.Artwork
+import org.jaudiotagger.tag.images.ArtworkFactory
 import java.io.File
 
 /**
@@ -83,29 +84,29 @@ object AudioTagEditor : TroveMetadataEditor {
                     override val permissions = item.permissions
                     override val mimeType = item.mimeType
 
-                    override suspend fun listFiles() = Result.Failure<List<FileItem>>(
+                    override suspend fun listFiles() = Result.Failure(
                         UnsupportedOperationException("temp file")
                     )
                     override suspend fun openInputStream() =
                         Result.Success(tempFile.inputStream() as java.io.InputStream)
                     override suspend fun openOutputStream(append: Boolean) =
                         Result.Success(tempFile.outputStream() as java.io.OutputStream)
-                    override suspend fun createFile(name: String) = Result.Failure<FileItem>(
+                    override suspend fun createFile(name: String) = Result.Failure(
                         UnsupportedOperationException("temp file")
                     )
-                    override suspend fun createDirectory(name: String) = Result.Failure<FileItem>(
+                    override suspend fun createDirectory(name: String) = Result.Failure(
                         UnsupportedOperationException("temp file")
                     )
                     override suspend fun delete() = Result.Success(Unit)
-                    override suspend fun rename(newName: String) = Result.Failure<FileItem>(
+                    override suspend fun rename(newName: String) = Result.Failure(
                         UnsupportedOperationException("temp file")
                     )
-                    override suspend fun copyTo(dest: FileItem) = Result.Failure<FileItem>(
+                    override suspend fun copyTo(dest: FileItem) = Result.Failure(
                         UnsupportedOperationException("temp file")
                     )
                     override suspend fun moveTo(destDir: FileItem, newName: String) =
-                        Result.Failure<FileItem>(UnsupportedOperationException("temp file"))
-                    override suspend fun findChild(name: String) = Result.Failure<FileItem>(
+                        Result.Failure(UnsupportedOperationException("temp file"))
+                    override suspend fun findChild(name: String) = Result.Failure(
                         UnsupportedOperationException("temp file")
                     )
                     override suspend fun getParent() = Result.Success<FileItem?>(null)
@@ -113,21 +114,18 @@ object AudioTagEditor : TroveMetadataEditor {
                 }
 
                 // Write the modified content back through FileItem's stream API
-                when (val srcStream = tempItem.openInputStream()) {
+                val srcStream = tempItem.openInputStream()
+                val dstStream = item.openOutputStream(append = false)
+                when (dstStream) {
                     is Result.Success -> {
-                        when (val dstStream = item.openOutputStream(append = false)) {
-                            is Result.Success -> {
-                                srcStream.value.use { src ->
-                                    dstStream.value.use { dst ->
-                                        src.copyTo(dst, bufferSize = 8192)
-                                    }
-                                }
-                                Result.Success(Unit)
+                        srcStream.value.use { src ->
+                            dstStream.value.use { dst ->
+                                src.copyTo(dst, bufferSize = 8192)
                             }
-                            is Result.Failure -> Result.Failure(dstStream.exception)
                         }
+                        Result.Success(Unit)
                     }
-                    is Result.Failure -> Result.Failure(srcStream.exception)
+                    is Result.Failure -> Result.Failure(dstStream.exception)
                 }
             } finally {
                 tempFile.delete()
@@ -207,7 +205,7 @@ object AudioTagEditor : TroveMetadataEditor {
         // Cover art
         bundle.coverArt?.let { bytes ->
             tag.deleteArtworkField()
-            val artwork = Artwork()
+            val artwork: Artwork = ArtworkFactory.getNew()
             artwork.binaryData = bytes
             artwork.mimeType = bundle.coverArtMimeType ?: "image/jpeg"
             tag.setField(artwork)

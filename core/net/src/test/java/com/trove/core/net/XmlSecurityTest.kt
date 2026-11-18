@@ -41,7 +41,7 @@ class XmlSecurityTest {
             respond(xxePayload, HttpStatusCode.MultiStatus)
         }
         val client = HttpClient(mockEngine)
-        val item = WebDavFileItem(client, "https://example.com/remote.php/webdav", "/remote.php/webdav", true)
+        val item = WebDavFileItem(client, "https://example.com/remote.php/webdav", "/remote.php/webdav", "webdav", _isDirectory = true)
 
         val result = item.listFiles()
         // Must complete safely: either successful parse without resolving entity or graceful failure
@@ -72,7 +72,7 @@ class XmlSecurityTest {
             respond(entityBomb, HttpStatusCode.MultiStatus)
         }
         val client = HttpClient(mockEngine)
-        val item = WebDavFileItem(client, "https://example.com/webdav", "/webdav", true)
+        val item = WebDavFileItem(client, "https://example.com/webdav", "/webdav", "webdav", _isDirectory = true)
 
         val startTime = System.currentTimeMillis()
         val result = item.listFiles()

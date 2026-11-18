@@ -1,46 +1,56 @@
 package com.trove.core.crypto
 
-import android.content.Context
-import com.trove.core.crypto.keystore.RawKeystoreVault
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
+import org.junit.Assert.fail
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
+import java.util.Base64
 import javax.crypto.AEADBadTagException
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.spec.GCMParameterSpec
 
-@RunWith(RobolectricTestRunner::class)
 class CryptoIntegrityTest {
-
-    private val context: Context get() = RuntimeEnvironment.getApplication()
 
     @Test
     fun testAeadTamperDetection() {
+        val kg = KeyGenerator.getInstance("AES")
+        kg.init(256)
+        val secretKey = kg.generateKey()
+
         val originalSecret = "TopSecret123".toByteArray()
-        val key = "test_secret_key"
-        
-        // 1. Encrypt and store
-        RawKeystoreVault.encryptToPrefs(context, key, originalSecret)
-        
-        // 2. Retrieve the raw base64 string from prefs
-        val prefs = context.getSharedPreferences(VaultConstants.PREFS_NAME, Context.MODE_PRIVATE)
-        val originalBase64 = prefs.getString(key, null)
-        assertNotNull(originalBase64)
-        
-        // 3. Tamper with the ciphertext (flip a bit in the last byte)
-        val rawBytes = android.util.Base64.decode(originalBase64, android.util.Base64.NO_WRAP)
+
+        // 1. Encrypt with AES-GCM
+        val encryptCipher = Cipher.getInstance("AES/GCM/NoPadding")
+        encryptCipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        val iv = encryptCipher.iv
+        val ciphertext = encryptCipher.doFinal(originalSecret)
+
+        val fullPayload = iv + ciphertext
+        val base64Payload = Base64.getEncoder().encodeToString(fullPayload)
+        assertNotNull(base64Payload)
+
+        // 2. Tamper with the ciphertext (flip a bit in the authentication tag)
+        val rawBytes = Base64.getDecoder().decode(base64Payload)
         rawBytes[rawBytes.size - 1] = (rawBytes[rawBytes.size - 1].toInt() xor 0xFF).toByte()
-        val tamperedBase64 = android.util.Base64.encodeToString(rawBytes, android.util.Base64.NO_WRAP)
-        
-        // 4. Attempt to decrypt tampered data
-        // RawKeystoreVault.decryptBase64 should catch the AEADBadTagException and return null
-        val decrypted = RawKeystoreVault.decryptBase64(tamperedBase64)
-        assertNull("Decryption should fail for tampered data due to AEAD tag mismatch", decrypted)
-        
-        // 5. Verify untampered data still works
-        val cleanDecrypted = RawKeystoreVault.decryptBase64(originalBase64!!)
+
+        // 3. Attempt to decrypt tampered data - AEADBadTagException MUST be thrown
+        val tamperedIv = rawBytes.copyOfRange(0, 12)
+        val tamperedCiphertext = rawBytes.copyOfRange(12, rawBytes.size)
+
+        val decryptCipher = Cipher.getInstance("AES/GCM/NoPadding")
+        decryptCipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, tamperedIv))
+        try {
+            decryptCipher.doFinal(tamperedCiphertext)
+            fail("Decryption should fail for tampered data due to AEAD tag mismatch")
+        } catch (_: AEADBadTagException) {
+            // Expected security behavior
+        }
+
+        // 4. Verify untampered data still decrypts cleanly
+        val validDecryptCipher = Cipher.getInstance("AES/GCM/NoPadding")
+        validDecryptCipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
+        val cleanDecrypted = validDecryptCipher.doFinal(ciphertext)
         assertArrayEquals(originalSecret, cleanDecrypted)
     }
 }

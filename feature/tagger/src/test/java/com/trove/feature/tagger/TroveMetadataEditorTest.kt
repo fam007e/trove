@@ -1,5 +1,8 @@
 package com.trove.feature.tagger
 
+import com.trove.core.fs.FileItem
+import com.trove.core.fs.PosixPermissions
+import com.trove.core.fs.Result
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -208,29 +211,29 @@ class TroveMetadataEditorTest {
         override val size = 0L
         override val lastModified = 0L
         override val isDirectory = false
-        override val permissions = com.trove.core.fs.PosixPermissions(0)
+        override val permissions = PosixPermissions.DEFAULT
         override val mimeType = ""
-        override suspend fun listFiles() = com.trove.core.fs.Result.Success(emptyList<FileItem>())
-        override suspend fun openInputStream() =
-            com.trove.core.fs.Result.Failure<java.io.InputStream>(UnsupportedOperationException())
-        override suspend fun openOutputStream(append: Boolean) =
-            com.trove.core.fs.Result.Failure<java.io.OutputStream>(UnsupportedOperationException())
-        override suspend fun createFile(name: String) =
-            com.trove.core.fs.Result.Failure<FileItem>(UnsupportedOperationException())
-        override suspend fun createDirectory(name: String) =
-            com.trove.core.fs.Result.Failure<FileItem>(UnsupportedOperationException())
-        override suspend fun delete() =
-            com.trove.core.fs.Result.Failure<Unit>(UnsupportedOperationException())
-        override suspend fun rename(newName: String) =
-            com.trove.core.fs.Result.Failure<FileItem>(UnsupportedOperationException())
-        override suspend fun copyTo(dest: FileItem) =
-            com.trove.core.fs.Result.Failure<FileItem>(UnsupportedOperationException())
-        override suspend fun moveTo(destDir: FileItem, newName: String) =
-            com.trove.core.fs.Result.Failure<FileItem>(UnsupportedOperationException())
-        override suspend fun findChild(name: String) =
-            com.trove.core.fs.Result.Failure<FileItem>(UnsupportedOperationException())
-        override suspend fun getParent() =
-            com.trove.core.fs.Result.Success<FileItem?>(null)
+        override suspend fun listFiles(): Result<List<FileItem>> = Result.Success(emptyList())
+        override suspend fun openInputStream(): Result<java.io.InputStream> =
+            Result.Failure(UnsupportedOperationException())
+        override suspend fun openOutputStream(append: Boolean): Result<java.io.OutputStream> =
+            Result.Failure(UnsupportedOperationException())
+        override suspend fun createFile(name: String): Result<FileItem> =
+            Result.Failure(UnsupportedOperationException())
+        override suspend fun createDirectory(name: String): Result<FileItem> =
+            Result.Failure(UnsupportedOperationException())
+        override suspend fun delete(): Result<Unit> =
+            Result.Failure(UnsupportedOperationException())
+        override suspend fun rename(newName: String): Result<FileItem> =
+            Result.Failure(UnsupportedOperationException())
+        override suspend fun copyTo(dest: FileItem): Result<FileItem> =
+            Result.Failure(UnsupportedOperationException())
+        override suspend fun moveTo(destDir: FileItem, newName: String): Result<FileItem> =
+            Result.Failure(UnsupportedOperationException())
+        override suspend fun findChild(name: String): Result<FileItem> =
+            Result.Failure(UnsupportedOperationException())
+        override suspend fun getParent(): Result<FileItem?> =
+            Result.Success(null)
         override suspend fun exists() = false
     }
 }
