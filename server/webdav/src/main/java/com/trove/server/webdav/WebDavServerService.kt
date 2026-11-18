@@ -19,6 +19,7 @@ import java.io.File
 import org.mindrot.jbcrypt.BCrypt
 
 class WebDavServerService : Service() {
+    companion object { @Volatile var running = false }
     private var server: NettyApplicationEngine? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -28,6 +29,7 @@ class WebDavServerService : Service() {
         
         if (server == null) {
             startWebDavServer(port, rootPath)
+            running = true
         }
         return START_STICKY
     }
@@ -62,6 +64,7 @@ class WebDavServerService : Service() {
     }
 
     override fun onDestroy() {
+        running = false
         server?.stop(1000, 5000)
         serviceScope.cancel()
         super.onDestroy()

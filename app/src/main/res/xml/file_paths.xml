@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider paths for sharing arbitrary files with external apps.
+     external-path covers shared storage (/storage/emulated/...);
+     cache-path covers temp copies made from SAF/remote/archive items. -->
+<paths>
+    <external-path name="external" path="." />
+    <cache-path name="cache" path="." />
+</paths>

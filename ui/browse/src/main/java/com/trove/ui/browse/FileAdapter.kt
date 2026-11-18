@@ -3,13 +3,18 @@ package com.trove.ui.browse
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.trove.core.fs.FileItem
+import com.trove.feature.image.ImageDecoderUtils
+import com.trove.feature.media.MediaHelper
 import com.trove.ui.widgets.FileRowView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 /**
- * FileAdapter with selection tracking and row binding.
+ * FileAdapter with selection tracking, row binding and async thumbnails.
  */
 class FileAdapter(
     private var items: List<FileItem> = emptyList(),
+    private val scope: CoroutineScope,
     private val onItemClick: (FileItem) -> Unit,
     private val onItemLongClick: ((FileItem) -> Boolean)? = null
 ) : RecyclerView.Adapter<FileAdapter.ViewHolder>() {
@@ -38,6 +43,25 @@ class FileAdapter(
         holder.view.setOnClickListener { onItemClick(item) }
         holder.view.setOnLongClickListener {
             onItemLongClick?.invoke(item) ?: false
+        }
+
+        // Async thumbnail: cached hit binds immediately; otherwise decode on
+        // IO and rebind only if this row still shows the same item.
+        val isThumbnable = !item.isDirectory &&
+            (ImageDecoderUtils.isImage(item.name) || MediaHelper.isVideo(item.name))
+        val cached = if (isThumbnable) ThumbnailCache.get(item) else null
+        holder.view.thumbnail = cached
+        if (isThumbnable && cached == null) {
+            scope.launch {
+                val bmp = ThumbnailCache.load(
+                    item,
+                    isVideo = MediaHelper.isVideo(item.name)
+                ) ?: return@launch
+                val current = items.getOrNull(position)
+                if (current?.path == item.path && holder.view.item?.path == item.path) {
+                    holder.view.thumbnail = bmp
+                }
+            }
         }
     }
 

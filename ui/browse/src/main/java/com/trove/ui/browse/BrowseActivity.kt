@@ -116,6 +116,15 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
                 }
             }
             addView(shizukuButton)
+
+            // Overflow menu (sort / hidden files / new folder / servers)
+            val menuButton = Button(this@BrowseActivity).apply {
+                text = "⋮"
+                setTextColor(android.graphics.Color.parseColor("#ECEFF4"))
+                setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
+                setOnClickListener { view -> showOverflowMenu(view) }
+            }
+            addView(menuButton)
         }
         rootLayout.addView(actionBar)
 
@@ -127,6 +136,19 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
             setOnTabSelectedListener { index ->
                 if (viewPager.currentItem != index) {
                     viewPager.currentItem = index
+                }
+            }
+            // Long-press a tab to close it (the last tab stays)
+            onTabLongClickListener = { index ->
+                if (tabs.size > 1) {
+                    tabs.removeAt(index)
+                    tabBar.removeTab(index)
+                    viewPager.adapter?.notifyItemRemoved(index)
+                    val target = index.coerceAtMost(tabs.size - 1)
+                    viewPager.currentItem = target
+                    tabBar.selectTab(target, notify = false)
+                } else {
+                    Toast.makeText(this@BrowseActivity, "Cannot close the last tab", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -221,7 +243,6 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
             .setNegativeButton("Use SAF only") { d, _ -> d.dismiss() }
             .show()
     }
-    }
 
     private fun tryMountShizuku() {
         if (!Shizuku.pingBinder()) {
@@ -242,6 +263,47 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
             .processNameSuffix("privileged")
 
         Shizuku.bindUserService(serviceArgs, shizukuConnection)
+    }
+
+    private fun showOverflowMenu(anchor: android.view.View) {
+        val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
+        val menu = popup.menu
+
+        val sort = menu.addSubMenu("Sort by")
+        sort.add(0, 1, 0, "Name").isChecked = BrowseFragment.sortBy == "name"
+        sort.add(0, 2, 0, "Size").isChecked = BrowseFragment.sortBy == "size"
+        sort.add(0, 3, 0, "Date modified").isChecked = BrowseFragment.sortBy == "date"
+        sort.setGroupCheckable(0, true, true)
+
+        menu.add(0, 4, 0, "Show hidden files")
+            .setCheckable(true).isChecked = BrowseFragment.showHidden
+
+        menu.add(0, 5, 0, "New folder")
+
+        val servers = menu.addSubMenu("Servers")
+        servers.add(0, 6, 0, "FTP (port 2121)")
+            .setCheckable(true).isChecked = com.trove.server.ftp.FtpServerService.running
+        servers.add(0, 7, 0, "WebDAV (port 8080)")
+            .setCheckable(true).isChecked = com.trove.server.webdav.WebDavServerService.running
+        servers.add(0, 8, 0, "SFTP (port 2222)")
+            .setCheckable(true).isChecked = com.trove.server.sftp.SftpServerService.running
+
+        popup.setOnMenuItemClickListener { item ->
+            val fragment = supportFragmentManager
+                .findFragmentByTag("f${viewPager.currentItem}") as? BrowseFragment
+            when (item.itemId) {
+                1 -> { BrowseFragment.sortBy = "name"; fragment?.onMenuAction(BrowseFragment.MenuAction.SORT_NAME) }
+                2 -> { BrowseFragment.sortBy = "size"; fragment?.onMenuAction(BrowseFragment.MenuAction.SORT_SIZE) }
+                3 -> { BrowseFragment.sortBy = "date"; fragment?.onMenuAction(BrowseFragment.MenuAction.SORT_DATE) }
+                4 -> { BrowseFragment.showHidden = !BrowseFragment.showHidden; fragment?.onMenuAction(BrowseFragment.MenuAction.TOGGLE_HIDDEN) }
+                5 -> fragment?.onMenuAction(BrowseFragment.MenuAction.NEW_FOLDER)
+                6 -> fragment?.onMenuAction(BrowseFragment.MenuAction.SERVER_FTP)
+                7 -> fragment?.onMenuAction(BrowseFragment.MenuAction.SERVER_WEBDAV)
+                8 -> fragment?.onMenuAction(BrowseFragment.MenuAction.SERVER_SFTP)
+            }
+            true
+        }
+        popup.show()
     }
 
     private fun addNewTab(root: FileItem) {

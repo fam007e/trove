@@ -54,6 +54,15 @@ class TroveTabBar @JvmOverloads constructor(
         tabState.add(label)
         val tabView = View(context).apply {
             layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
+            // Children own their touches: the parent must NOT intercept
+            // (see onInterceptTouchEvent) or clicks/long-presses never arrive.
+            setOnClickListener {
+                selectTab(indexOfChild(it))
+            }
+            setOnLongClickListener {
+                onTabLongClickListener?.invoke(indexOfChild(it))
+                true
+            }
         }
         addView(tabView)
         requestLayout()
@@ -108,6 +117,9 @@ class TroveTabBar @JvmOverloads constructor(
         onTabSelectedListener = listener
     }
 
+    /** Invoked with the tab index when a tab is long-pressed (close gesture). */
+    var onTabLongClickListener: ((Int) -> Unit)? = null
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (tabState.size == 0) return
@@ -148,15 +160,12 @@ class TroveTabBar @JvmOverloads constructor(
         )
     }
 
-    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = true
+    // Children (equal-weight views spanning the whole bar) handle taps and
+    // long-presses themselves; the parent must not intercept or they would
+    // never receive events. Empty-bar taps simply do nothing.
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = false
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_UP && tabState.size > 0) {
-            val index = TabState.tabIndexAt(event.x, width.toFloat(), tabState.size)
-            if (index >= 0) {
-                selectTab(index)
-            }
-        }
         return true
     }
 }

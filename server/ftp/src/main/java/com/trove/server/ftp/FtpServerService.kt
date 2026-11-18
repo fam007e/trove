@@ -15,6 +15,8 @@ import java.io.File
 import java.net.ServerSocket
 
 class FtpServerService : Service() {
+    companion object { /** Menu/overlay state mirror; authoritative lifecycle is per-instance. */
+        @Volatile var running = false }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var serverSocket: ServerSocket? = null
     private var isRunning = false
@@ -41,6 +43,7 @@ class FtpServerService : Service() {
 
     private fun startServer(port: Int, rootPath: String, credentials: Map<String, String>) {
         isRunning = true
+        running = true
         serviceScope.launch(Dispatchers.IO) {
             try {
                 val lanAddress = NetworkUtils.getLanAddress()
@@ -61,6 +64,7 @@ class FtpServerService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        running = false
         serverSocket?.close()
         serviceScope.cancel()
         super.onDestroy()

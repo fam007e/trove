@@ -12,6 +12,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class SftpServerService : Service() {
+    companion object { @Volatile var running = false }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var sftpServerManager: SftpServerManager? = null
@@ -52,6 +53,7 @@ class SftpServerService : Service() {
                 )
                 manager.start()
                 sftpServerManager = manager
+                running = true
             } catch (e: Exception) {
                 e.printStackTrace()
                 sftpServerManager = null
@@ -60,6 +62,7 @@ class SftpServerService : Service() {
     }
 
     override fun onDestroy() {
+        running = false
         sftpServerManager?.stop()
         sftpServerManager = null
         serviceScope.cancel()

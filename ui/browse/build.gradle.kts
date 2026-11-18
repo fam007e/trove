@@ -38,6 +38,9 @@ dependencies {
     implementation(project(":feature:pdf"))
     implementation(project(":feature:tagger"))
     implementation(project(":feature:media"))
+    implementation(project(":server:ftp"))
+    implementation(project(":server:webdav"))
+    implementation(project(":server:sftp"))
     implementation(project(":privilege"))
     implementation(libs.shizukuApi)
 

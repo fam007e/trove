@@ -83,6 +83,15 @@ class FileRowView(ctx: Context) : View(ctx) {
             invalidate()
         }
 
+    /** Decoded thumbnail for the row; drawn inside the icon tile when present. */
+    var thumbnail: android.graphics.Bitmap? = null
+        set(v) {
+            if (field != v) {
+                field = v
+                invalidate()
+            }
+        }
+
     private fun animateSelection(selected: Boolean) {
         selectionAnimator?.cancel()
         val target = if (selected) 1f else 0f
@@ -144,14 +153,26 @@ class FileRowView(ctx: Context) : View(ctx) {
         val padding = context.dp(16f)
         val iconSize = context.dp(38f)
 
-        // Item Icon (rounded rectangle)
+        // Item Icon (rounded rectangle; real thumbnail when one is loaded)
         iconBounds.set(
             padding,
             (height - iconSize) / 2f,
             padding + iconSize,
             (height + iconSize) / 2f
         )
-        c.drawRoundRect(iconBounds, context.dp(6f), context.dp(6f), iconPaint)
+        val thumb = thumbnail
+        if (thumb != null && !thumb.isRecycled) {
+            val radius = context.dp(6f)
+            val path = android.graphics.Path().apply {
+                addRoundRect(iconBounds, radius, radius, android.graphics.Path.Direction.CW)
+            }
+            c.save()
+            c.clipPath(path)
+            drawBitmapCover(c, thumb, iconBounds)
+            c.restore()
+        } else {
+            c.drawRoundRect(iconBounds, context.dp(6f), context.dp(6f), iconPaint)
+        }
 
         val textLeft = iconBounds.right + context.dp(16f)
         val availableWidth = width - textLeft - padding
@@ -168,6 +189,21 @@ class FileRowView(ctx: Context) : View(ctx) {
         // Meta (Size and Date)
         val meta = "${formatSize(fi.size)}  •  ${dateFormatter.format(Date(fi.lastModified))}"
         c.drawText(meta, textLeft, height / 2f + context.dp(17f), metaPaint)
+    }
+
+    /** Center-crop (cover) draw of [bmp] into [bounds], preserving aspect. */
+    private fun drawBitmapCover(c: Canvas, bmp: android.graphics.Bitmap, bounds: RectF) {
+        val srcW = bmp.width.toFloat()
+        val srcH = bmp.height.toFloat()
+        if (srcW <= 0 || srcH <= 0) return
+        val dstW = bounds.width()
+        val dstH = bounds.height()
+        val scale = maxOf(dstW / srcW, dstH / srcH)
+        val drawW = srcW * scale
+        val drawH = srcH * scale
+        val left = bounds.left - (drawW - dstW) / 2f
+        val top = bounds.top - (drawH - dstH) / 2f
+        c.drawBitmap(bmp, null, RectF(left, top, left + drawW, top + drawH), null)
     }
 
     private fun formatSize(size: Long): String {

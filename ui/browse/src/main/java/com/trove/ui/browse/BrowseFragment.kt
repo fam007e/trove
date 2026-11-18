@@ -34,6 +34,12 @@ class BrowseFragment : Fragment() {
         fun onDirectoryChanged(directory: FileItem)
     }
 
+    /** Actions dispatched from the activity's overflow menu. */
+    enum class MenuAction {
+        SORT_NAME, SORT_SIZE, SORT_DATE, TOGGLE_HIDDEN,
+        NEW_FOLDER, SERVER_FTP, SERVER_WEBDAV, SERVER_SFTP
+    }
+
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: FileAdapter
     private lateinit var breadcrumbBar: TroveBreadcrumbBar
@@ -41,6 +47,10 @@ class BrowseFragment : Fragment() {
     private var rootDirectory: FileItem? = null
 
     companion object {
+        // App-wide list settings (persisted in a later pass via SharedPreferences)
+        var sortBy: String = "name"      // "name" | "size" | "date"
+        var showHidden: Boolean = false
+
         fun newInstance(root: FileItem): BrowseFragment {
             val fragment = BrowseFragment()
             fragment.rootDirectory = root
@@ -76,6 +86,8 @@ class BrowseFragment : Fragment() {
         }
 
         adapter = FileAdapter(
+            items = emptyList(),
+            scope = lifecycleScope,
             onItemClick = { item ->
                 if (item.isDirectory) {
                     loadDirectory(item)
@@ -88,7 +100,7 @@ class BrowseFragment : Fragment() {
                 } else if (MediaHelper.isMedia(item.name)) {
                     openMediaPlayer(item)
                 } else {
-                    Toast.makeText(context, "File: ${item.name}", Toast.LENGTH_SHORT).show()
+                    openWithExternalApp(item)
                 }
             },
             onItemLongClick = { item ->
@@ -190,13 +202,7 @@ class BrowseFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             when (val result = directory.listFiles()) {
                 is Result.Success -> {
-                    android.util.Log.v(
-                        "TroveList",
-                        "${directory.path}: ${result.value.size} entries, " +
-                            "${result.value.count { it.isDirectory }} dirs, " +
-                            "${result.value.count { !it.isDirectory }} files"
-                    )
-                    adapter.updateItems(result.value)
+                    adapter.updateItems(applyListSettings(result.value))
                     applyDirectoryTransition()
                 }
                 is Result.Failure -> {
@@ -228,6 +234,146 @@ class BrowseFragment : Fragment() {
         val controller = android.view.animation.LayoutAnimationController(animSet, 0.04f)
         recyclerView.layoutAnimation = controller
         recyclerView.scheduleLayoutAnimation()
+    }
+
+    /** Dirs first, then the chosen key; hidden files filtered by the toggle. */
+    private fun applyListSettings(list: List<FileItem>): List<FileItem> {
+        val visible = if (showHidden) list else list.filter { !it.name.startsWith(".") }
+        val (dirs, files) = visible.partition { it.isDirectory }
+        val sorted = when (sortBy) {
+            "size" -> files.sortedByDescending { it.size }
+            "date" -> files.sortedByDescending { it.lastModified }
+            else -> files.sortedBy { it.name.lowercase() }
+        }
+        val sortedDirs = when (sortBy) {
+            "date" -> dirs.sortedByDescending { it.lastModified }
+            else -> dirs.sortedBy { it.name.lowercase() }
+        }
+        return sortedDirs + sorted
+    }
+
+    /** Entry point for the activity's overflow menu. */
+    fun onMenuAction(action: MenuAction) {
+        when (action) {
+            MenuAction.SORT_NAME -> { sortBy = "name"; reload() }
+            MenuAction.SORT_SIZE -> { sortBy = "size"; reload() }
+            MenuAction.SORT_DATE -> { sortBy = "date"; reload() }
+            MenuAction.TOGGLE_HIDDEN -> { showHidden = !showHidden; reload() }
+            MenuAction.NEW_FOLDER -> showNewFolderDialog()
+            MenuAction.SERVER_FTP -> toggleServer(
+                com.trove.server.ftp.FtpServerService::class.java,
+                com.trove.server.ftp.FtpServerService.running, "FTP"
+            )
+            MenuAction.SERVER_WEBDAV -> toggleServer(
+                com.trove.server.webdav.WebDavServerService::class.java,
+                com.trove.server.webdav.WebDavServerService.running, "WebDAV"
+            )
+            MenuAction.SERVER_SFTP -> toggleServer(
+                com.trove.server.sftp.SftpServerService::class.java,
+                com.trove.server.sftp.SftpServerService.running, "SFTP"
+            )
+        }
+    }
+
+    private fun reload() {
+        currentDirectory?.let { loadDirectory(it) }
+    }
+
+    private fun toggleServer(service: Class<*>, running: Boolean, label: String) {
+        val ctx = context ?: return
+        val intent = Intent(ctx, service)
+        if (running) {
+            ctx.stopService(intent)
+            Toast.makeText(ctx, "$label server stopped", Toast.LENGTH_SHORT).show()
+        } else {
+            ctx.startService(intent)
+            Toast.makeText(ctx, "$label server starting…", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showNewFolderDialog() {
+        val ctx = context ?: return
+        val input = android.widget.EditText(ctx).apply {
+            setSingleLine(true)
+            hint = "Folder name"
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle("New folder")
+            .setView(input)
+            .setPositiveButton("Create") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isEmpty()) return@setPositiveButton
+                val dir = currentDirectory ?: return@setPositiveButton
+                viewLifecycleOwner.lifecycleScope.launch {
+                    when (val res = dir.createDirectory(name)) {
+                        is Result.Success -> reload()
+                        is Result.Failure -> Toast.makeText(
+                            ctx, "Failed: ${res.exception.message}", Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /**
+     * Opens any file the built-in viewers don't handle (.py, .xml, .apk, …)
+     * with an external app via FileProvider. Local files are shared in place;
+     * everything else (SAF, remote, inside archives) is streamed to a cache
+     * copy first — the stream/listener abstractions make this transparent.
+     */
+    private fun openWithExternalApp(item: FileItem) {
+        val ctx = context ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                if (item is com.trove.core.fs.LocalFileItem) {
+                    java.io.File(item.path)
+                } else {
+                    val tmp = java.io.File(ctx.cacheDir, "open_" + item.name)
+                    val input = item.openInputStream().getOrNull()
+                    if (input == null) null
+                    else {
+                        input.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+                        tmp
+                    }
+                }
+            }
+            if (file == null || !file.exists()) {
+                Toast.makeText(ctx, "Cannot read this file", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                ctx, "${ctx.packageName}.fileprovider", file
+            )
+            val intent = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, mimeFor(item))
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            try {
+                ctx.startActivity(intent)
+            } catch (_: android.content.ActivityNotFoundException) {
+                Toast.makeText(ctx, "No app can open .${item.name.substringAfterLast('.')} files", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun mimeFor(item: FileItem): String {
+        val known = mapOf(
+            "py" to "text/x-python", "xml" to "text/xml", "txt" to "text/plain",
+            "json" to "application/json", "md" to "text/markdown", "sh" to "text/x-sh",
+            "html" to "text/html", "htm" to "text/html", "js" to "text/javascript",
+            "kt" to "text/plain", "java" to "text/plain", "csv" to "text/csv",
+            "log" to "text/plain", "ini" to "text/plain", "yml" to "text/plain",
+            "yaml" to "text/plain", "apk" to "application/vnd.android.package-archive"
+        )
+        val ext = item.name.substringAfterLast('.', "").lowercase()
+        val probed = item.mimeType?.takeIf {
+            it.isNotBlank() && it != "application/octet-stream"
+        }
+        return probed ?: known[ext]
+            ?: if (ext in setOf("py", "sh", "pl", "rb", "lua", "conf")) "text/plain"
+            else "application/octet-stream"
     }
 
     private fun startTransitionActivity(intent: Intent) {
