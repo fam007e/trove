@@ -15,7 +15,8 @@
     <application
         android:name="com.trove.app.AppImpl"
         android:allowBackup="false"
-        android:icon="@android:drawable/ic_menu_save"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Trove"
         android:theme="@android:style/Theme.Material.NoActionBar">
 

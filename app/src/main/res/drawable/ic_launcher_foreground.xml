@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Trove launcher icon foreground — vector drawable.
+  A stylised vault shield with an integrated "T".
+  108 dp canvas (adaptive icon spec), 72 dp safe zone centered.
+  
+  This vector serves both as:
+  1. The adaptive-icon foreground on API 26+
+  2. The legacy launcher icon on API < 26 (via VectorDrawableCompat)
+  
+  Design rationale: Trove = treasure vault + file management.
+  The shield conveys security (vault/crypto features),
+  the "T" is the brand mark, teal/gold palette is unique.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Shield body — rounded pentagon shape, emerald teal -->
+    <path
+        android:fillColor="#0FA3A3"
+        android:pathData="M54,18 L80,30 C82,31 83,33 83,35 L83,55
+                          C83,70 70,82 54,90 C38,82 25,70 25,55
+                          L25,35 C25,33 26,31 28,30 Z" />
+
+    <!-- Shield inner highlight — lighter teal for depth -->
+    <path
+        android:fillColor="#14C4C4"
+        android:pathData="M54,23 L76,33 C77,34 78,35 78,37 L78,54
+                          C78,67 67,77 54,84 C41,77 30,67 30,54
+                          L30,37 C30,35 31,34 32,33 Z" />
+
+    <!-- Letter T — gold/amber, bold, centered in safe zone -->
+    <path
+        android:fillColor="#F5A623"
+        android:pathData="M40,40 L68,40 L68,48 L58,48 L58,74 L50,74 L50,48 L40,48 Z" />
+
+    <!-- Vault keyhole accent — small circle below T crossbar -->
+    <path
+        android:fillColor="#D4941E"
+        android:pathData="M54,70 m-3,0 a3,3 0 1,1 6,0 a3,3 0 1,1 -6,0" />
+</vector>

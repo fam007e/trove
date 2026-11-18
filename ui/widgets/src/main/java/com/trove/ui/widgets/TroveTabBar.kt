@@ -130,4 +130,4 @@ class TroveTabBar @JvmOverloads constructor(
 }
 
 @Deprecated("Renamed to TroveTabBar", ReplaceWith("TroveTabBar"))
-typealias MiTabBar = TroveTabBar
+

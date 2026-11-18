@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive icon (API 26+): the system composites foreground over background
+  and applies the device mask (circle, squircle, rounded-square, etc.).
+  ic_launcher_foreground is a 108 dp canvas with a 72 dp safe-zone centered.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>

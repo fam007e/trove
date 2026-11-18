@@ -100,4 +100,4 @@ class TroveBreadcrumbBar @JvmOverloads constructor(
 }
 
 @Deprecated("Renamed to TroveBreadcrumbBar", ReplaceWith("TroveBreadcrumbBar"))
-typealias MiBreadcrumbBar = TroveBreadcrumbBar
+
