@@ -1,0 +1,6 @@
+System:
+  name: System
+  description: File managers and system tools
+Security:
+  name: Security
+  description: Cryptographic and security tools

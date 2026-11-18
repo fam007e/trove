@@ -20,7 +20,6 @@ Trove is licensed under the **Apache License, Version 2.0**.
 | **Conscrypt** | 2.5.2 | Apache-2.0 | [google/conscrypt](https://github.com/google/conscrypt) |
 | **SSHJ** | 0.38.0 | Apache-2.0 | [hierynomus/sshj](https://github.com/hierynomus/sshj) |
 | **Shizuku API** | 13.1.5 | Apache-2.0 | [RikkaApps/Shizuku-API](https://github.com/RikkaApps/Shizuku-API) |
-| **Junrar** | 7.5.5 | UnRAR License / Apache-2.0 | [junrar/junrar](https://github.com/junrar/junrar) |
 | **XZ for Java** | 1.9 | Public Domain | [tukaani/xz-java](https://tukaani.org/xz/java.html) |
 | **JCIFS-NG** | 2.1.10 | **LGPL-2.1** | [Agno3/jcifs-ng](https://github.com/Agno3/jcifs-ng) |
 | **JAudioTagger** | 3.0.1 | **LGPL-2.1** | [jthink/jaudiotagger](https://github.com/jthink/jaudiotagger) |

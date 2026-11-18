@@ -32,7 +32,6 @@ dependencies {
     implementation(libs.commonsCompress)
     implementation(libs.tukaaniXz)
     implementation(libs.zip4j)
-    implementation(libs.junrar)
 
     testImplementation(libs.junit)
 }
