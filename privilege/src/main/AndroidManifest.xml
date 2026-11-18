@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- 
+             PEDAGOGICAL NOTE:
+             We mark this service as exported="false" because it should only be 
+             accessible to the Trove application via Shizuku/Binder. 
+             Setting exported="false" is the first line of defense; 
+             the UID check in the service implementation is the second.
+        -->
+        <service 
+            android:name="com.trove.privilege.TrovePrivilegedService"
+            android:exported="false" />
+    </application>
+</manifest>
