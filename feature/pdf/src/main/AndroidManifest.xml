@@ -4,6 +4,6 @@
         <activity
             android:name="com.trove.feature.pdf.TrovePdfViewerActivity"
             android:exported="false"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
     </application>
 </manifest>

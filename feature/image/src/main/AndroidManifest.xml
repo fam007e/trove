@@ -4,6 +4,6 @@
         <activity
             android:name="com.trove.feature.image.TroveImageViewerActivity"
             android:exported="false"
-            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
     </application>
 </manifest>
