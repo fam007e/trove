@@ -45,3 +45,8 @@ Thumbs.db
 # Mimosa security state
 .mimosa/
 
+
+# Release signing secrets (see signing/RELEASE_SIGNING.md)
+signing/keystore.properties
+*.jks
+*.keystore

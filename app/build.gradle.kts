@@ -1,5 +1,15 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.androidApplication)
+}
+
+// Release signing: reads signing/keystore.properties (gitignored). The keystore
+// itself never enters the repo — see signing/RELEASE_SIGNING.md for the
+// identity chain binding this cert to the author's GPG key.
+val signingPropsFile = rootProject.file("signing/keystore.properties")
+val signingProps = Properties().apply {
+    if (signingPropsFile.exists()) signingPropsFile.inputStream().use { load(it) }
 }
 
 android {
@@ -16,6 +26,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (signingPropsFile.exists()) {
+            create("release") {
+                storeFile = rootProject.file(signingProps.getProperty("storeFile"))
+                storePassword = signingProps.getProperty("storePassword")
+                keyAlias = signingProps.getProperty("keyAlias")
+                keyPassword = signingProps.getProperty("keyPassword")
+                storeType = "JKS"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -25,6 +47,9 @@ android {
                 "proguard-rules.pro",
                 file("${rootDir}/proguard-rules.pro")
             )
+            if (signingPropsFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             isMinifyEnabled = false
