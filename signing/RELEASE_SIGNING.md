@@ -83,6 +83,11 @@ directory (`*.gpgsig`), made by the GPG key above.
    passphrase into CI, chat, or shell history.
 3. Users verify: `sha256sum -c SHA256SUMS` and `gpg --verify <apk>.gpgsig <apk>`.
 
+Version identity: CI stamps versionName=<tag> (verbatim, e.g. `v2026.11.18`) and
+versionCode=<YYYYMMDD> (e.g. 20261118) from the tag — tag, in-app version, and
+store metadata are always the same identifier. versionCode is monotonic for
+F-Droid/Play; never cut two releases on the same calendar day (code collision).
+
 Threat model notes:
 - CI never sees key material; signing is artifact-only from a trusted local machine.
 - sign-release.sh fails loudly if the keystore is wrong/replaced (fingerprint check).

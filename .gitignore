@@ -50,4 +50,3 @@ Thumbs.db
 signing/keystore.properties
 *.jks
 *.keystore
-signing/RELEASE_SIGNING.md.gpgsig

@@ -20,8 +20,16 @@ android {
         applicationId = "com.trove.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 100
-        versionName = "1.0.0"
+
+        // Release versioning comes from the vYYYY.MM.DD git tag, stamped by CI
+        // as Gradle properties (-Ptrove.versionName / -Ptrove.versionCode).
+        // versionCode = YYYYMMDD digits (e.g. tag v2026.11.18 -> 20261118):
+        // monotonic for F-Droid/Play, fits int32 until year 9999. Two releases
+        // on the same calendar day would collide — don't cut two a day.
+        // Local builds without the properties fall back to deterministic
+        // dev defaults so the build stays reproducible.
+        versionName = providers.gradleProperty("trove.versionName").getOrElse("0.0.0-dev")
+        versionCode = providers.gradleProperty("trove.versionCode").getOrElse("0").toInt()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
