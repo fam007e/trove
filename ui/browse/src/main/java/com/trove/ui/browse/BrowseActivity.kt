@@ -172,11 +172,55 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
         // Initialize with default internal storage tab
         val root = Environment.getExternalStorageDirectory()
         addNewTab(LocalFileItem(root))
-        
+
         // Restore persisted SAF root if any
         getPreferences(MODE_PRIVATE).getString("saf_root", null)?.let {
             addNewSafTab(Uri.parse(it))
         }
+
+        ensureAllFilesAccess()
+    }
+
+    /**
+     * Scoped storage (Android 11+): without the MANAGE_EXTERNAL_STORAGE grant
+     * the FUSE layer shows directories but silently hides every file from
+     * java.io.File — a file manager that lists only folders. Route the user
+     * to the system "All files access" panel until granted.
+     */
+    private fun ensureAllFilesAccess() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return
+        if (android.os.Environment.isExternalStorageManager()) return
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("All files access needed")
+            .setMessage(
+                "Trove needs \"All files access\" to list and manage files. " +
+                    "Without it Android shows only empty folders.\n\n" +
+                    "Enable it for Trove in the next screen, then come back."
+            )
+            .setPositiveButton("Open settings") { d, _ ->
+                try {
+                    startActivity(
+                        android.content.Intent(
+                            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            android.net.Uri.parse("package:$packageName")
+                        )
+                    )
+                } catch (_: Exception) {
+                    // Rare OEM fallback: generic all-files panel
+                    try {
+                        startActivity(
+                            android.content.Intent(
+                                android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
+                            )
+                        )
+                    } catch (_: Exception) { }
+                }
+                d.dismiss()
+            }
+            .setNegativeButton("Use SAF only") { d, _ -> d.dismiss() }
+            .show()
+    }
     }
 
     private fun tryMountShizuku() {

@@ -190,6 +190,12 @@ class BrowseFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             when (val result = directory.listFiles()) {
                 is Result.Success -> {
+                    android.util.Log.v(
+                        "TroveList",
+                        "${directory.path}: ${result.value.size} entries, " +
+                            "${result.value.count { it.isDirectory }} dirs, " +
+                            "${result.value.count { !it.isDirectory }} files"
+                    )
                     adapter.updateItems(result.value)
                     applyDirectoryTransition()
                 }
