@@ -22,6 +22,14 @@ class SftpServerManager(
     var isRunning: Boolean = false
         private set
 
+    /**
+     * The port the server actually bound to. Meaningful after [start]; always
+     * -1 when stopped. Pass port=0 to bind an ephemeral port and read the
+     * real value from here.
+     */
+    var boundPort: Int = -1
+        private set
+
     @Synchronized
     fun start() {
         if (isRunning) return
@@ -46,6 +54,9 @@ class SftpServerManager(
         server.start()
         sshServer = server
         isRunning = true
+        boundPort = server.boundAddresses
+            .filterIsInstance<java.net.InetSocketAddress>()
+            .firstOrNull()?.port ?: -1
     }
 
     @Synchronized
@@ -56,6 +67,7 @@ class SftpServerManager(
         } finally {
             sshServer = null
             isRunning = false
+            boundPort = -1
         }
     }
 

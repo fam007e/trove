@@ -32,14 +32,8 @@ class TrovePrivilegedService(private val expectedUid: Int) : ITrovePrivileged.St
         }
     }
 
-    private fun getCanonicalPath(path: String): String {
-        return try {
-            File(path).canonicalPath
-        } catch (e: IOException) {
-            // Fallback to absolute if canonical fails (e.g. path doesn't exist)
-            File(path).absolutePath
-        }
-    }
+    private fun getCanonicalPath(path: String): String =
+        com.trove.privilege.fs.PathCanonicalizer.canonical(path)
 
     override fun stat(path: String): Bundle {
         enforceCaller()

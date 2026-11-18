@@ -25,4 +25,6 @@ android {
 dependencies {
     implementation(project(":core:fs"))
     implementation(libs.androidxCoreKtx)
+
+    testImplementation(libs.junit)
 }

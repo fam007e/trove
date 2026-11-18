@@ -33,4 +33,6 @@ dependencies {
     // Shizuku libraries
     implementation(libs.shizukuApi)
     implementation(libs.shizukuProvider)
+
+    testImplementation(libs.junit)
 }

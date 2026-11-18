@@ -37,8 +37,7 @@ class TroveTabBar @JvmOverloads constructor(
         strokeWidth = context.dp(3f)
     }
 
-    private val tabs = mutableListOf<String>()
-    private var selectedIndex = 0
+    private val tabState = TabState()
     private var onTabSelectedListener: ((Int) -> Unit)? = null
 
     // Smooth indicator transition
@@ -52,7 +51,7 @@ class TroveTabBar @JvmOverloads constructor(
     }
 
     fun addTab(label: String) {
-        tabs.add(label)
+        tabState.add(label)
         val tabView = View(context).apply {
             layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
         }
@@ -62,20 +61,15 @@ class TroveTabBar @JvmOverloads constructor(
     }
 
     fun updateTab(index: Int, label: String) {
-        if (index in tabs.indices) {
-            tabs[index] = label
+        if (tabState.update(index, label)) {
             invalidate()
         }
     }
 
     fun removeTab(index: Int) {
-        if (index in tabs.indices) {
-            tabs.removeAt(index)
+        if (tabState.remove(index)) {
             if (childCount > index) {
                 removeViewAt(index)
-            }
-            if (selectedIndex >= tabs.size) {
-                selectedIndex = (tabs.size - 1).coerceAtLeast(0)
             }
             requestLayout()
             invalidate()
@@ -83,9 +77,8 @@ class TroveTabBar @JvmOverloads constructor(
     }
 
     fun selectTab(index: Int, notify: Boolean = true) {
-        if (index in tabs.indices && selectedIndex != index) {
-            val oldIndex = selectedIndex
-            selectedIndex = index
+        val oldIndex = tabState.select(index)
+        if (oldIndex >= 0) {
             if (notify) {
                 onTabSelectedListener?.invoke(index)
             }
@@ -94,8 +87,8 @@ class TroveTabBar @JvmOverloads constructor(
     }
 
     private fun animateIndicator(from: Int, to: Int) {
-        if (width == 0 || tabs.isEmpty()) return
-        val tabWidth = width.toFloat() / tabs.size
+        if (width == 0 || tabState.size == 0) return
+        val tabWidth = width.toFloat() / tabState.size
         val startX = from * tabWidth
         val targetX = to * tabWidth
 
@@ -117,15 +110,16 @@ class TroveTabBar @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (tabs.isEmpty()) return
+        if (tabState.size == 0) return
 
-        val tabWidth = width.toFloat() / tabs.size
+        val labels = tabState.labelList
+        val tabWidth = width.toFloat() / labels.size
         val centerY = height / 2f
         val baseline = centerY - (textPaint.descent() + textPaint.ascent()) / 2
 
-        for (i in tabs.indices) {
-            val label = tabs[i]
-            textPaint.color = if (i == selectedIndex) colorNord6 else colorNord3
+        for (i in labels.indices) {
+            val label = labels[i]
+            textPaint.color = if (i == tabState.selectedIndex) colorNord6 else colorNord3
             val textWidth = textPaint.measureText(label)
             val startX = i * tabWidth
             
@@ -142,7 +136,7 @@ class TroveTabBar @JvmOverloads constructor(
         val indicatorX = if (indicatorAnimator?.isRunning == true) {
             animatedIndicatorX
         } else {
-            selectedIndex * tabWidth
+            tabState.selectedIndex * tabWidth
         }
 
         canvas.drawLine(
@@ -157,10 +151,11 @@ class TroveTabBar @JvmOverloads constructor(
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = true
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_UP && tabs.isNotEmpty()) {
-            val tabWidth = width.toFloat() / tabs.size
-            val index = (event.x / tabWidth).toInt().coerceIn(0, tabs.size - 1)
-            selectTab(index)
+        if (event.action == MotionEvent.ACTION_UP && tabState.size > 0) {
+            val index = TabState.tabIndexAt(event.x, width.toFloat(), tabState.size)
+            if (index >= 0) {
+                selectTab(index)
+            }
         }
         return true
     }

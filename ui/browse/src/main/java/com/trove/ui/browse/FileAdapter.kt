@@ -14,7 +14,10 @@ class FileAdapter(
     private val onItemLongClick: ((FileItem) -> Boolean)? = null
 ) : RecyclerView.Adapter<FileAdapter.ViewHolder>() {
 
-    val selectedItems = mutableSetOf<FileItem>()
+    private val selection = SelectionTracker<FileItem>()
+
+    /** Currently selected items, in selection order. */
+    val selectedItems: Set<FileItem> get() = selection.selectedItems
 
     class ViewHolder(val view: FileRowView) : RecyclerView.ViewHolder(view)
 
@@ -43,26 +46,20 @@ class FileAdapter(
     fun toggleSelection(item: FileItem) {
         val index = items.indexOf(item)
         if (index != -1) {
-            if (selectedItems.contains(item)) {
-                selectedItems.remove(item)
-            } else {
-                selectedItems.add(item)
-            }
+            selection.toggle(item)
             notifyItemChanged(index)
         }
     }
 
     fun clearSelection() {
-        val count = selectedItems.size
-        selectedItems.clear()
-        if (count > 0) {
+        if (selection.clear() > 0) {
             notifyDataSetChanged()
         }
     }
 
     fun updateItems(newItems: List<FileItem>) {
         items = newItems
-        selectedItems.clear()
+        selection.clear()
         notifyDataSetChanged()
     }
 }

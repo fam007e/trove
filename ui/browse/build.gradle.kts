@@ -40,4 +40,6 @@ dependencies {
     implementation(project(":feature:media"))
     implementation(project(":privilege"))
     implementation(libs.shizukuApi)
+
+    testImplementation(libs.junit)
 }
