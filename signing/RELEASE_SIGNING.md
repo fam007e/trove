@@ -17,7 +17,7 @@ Anyone can verify the chain without trusting this file alone (see Verification).
 | Cert SHA-256 | `CF:BB:CD:6B:7A:74:A7:B1:04:7C:2F:DA:B5:1C:5C:94:8B:36:6B:E6:65:04:B9:B7:16:C7:33:7C:2F:C8:75:87` |
 | Cert validity | 2026-11-18 → 2056-12-30 (30 years, F-Droid compatible) |
 | Key algorithm | RSA 4096 |
-| Keystore | JKS, `~/.keystores/trove/trove-release.jks` (private, NOT in this repo) |
+| Keystore | PKCS12, `~/.keystores/trove/trove-release.p12` (private, NOT in this repo; migrated from JKS 2026-11-18, same certificate) |
 | Keystore alias | `trove-release` |
 
 The OU field of the certificate deliberately embeds the author's GPG fingerprint,
@@ -66,7 +66,25 @@ APK signature matches cert `cfbbcd...7587` → cert is GPG-signed by
 Both the APK and this certificate carry GPG detached signatures in this
 directory (`*.gpgsig`), made by the GPG key above.
 
-- JKS was requested explicitly; `keytool` warns JKS is deprecated. Migration to PKCS12
-  (identical keys, new container) is one command and can be done any time without
-  changing the certificate:
-  `keytool -importkeystore -srckeystore trove-release.jks -destkeystore trove-release.jks -deststoretype pkcs12`
+- Container migrated JKS -> PKCS12 on 2026-11-18 (keytool deprecates JKS algorithms);
+  certificate and fingerprint are byte-identical, so update compatibility is unaffected.
+  The original JKS is kept as a backup in the private keystore dir.
+
+## Public GitHub release flow (keystore never leaves this machine)
+
+1. Push a tag `vX.Y.Z` -> `.github/workflows/release.yml` builds a reproducible
+   UNSIGNED APK and uploads it as a workflow artifact (CI refuses signed APKs).
+2. Download the artifact locally, then run in YOUR terminal:
+   `scripts/sign-release.sh app-release.apk vX.Y.Z`
+   The script signs (v1+v2+v3), verifies the cert fingerprint against the value
+   recorded in this file, produces SHA256SUMS + GPG detached signatures, and
+   publishes the GitHub release via `gh` when a tag is passed. GPG steps run in
+   your terminal so pinentry can prompt for the GPG passphrase — never paste the
+   passphrase into CI, chat, or shell history.
+3. Users verify: `sha256sum -c SHA256SUMS` and `gpg --verify <apk>.gpgsig <apk>`.
+
+Threat model notes:
+- CI never sees key material; signing is artifact-only from a trusted local machine.
+- sign-release.sh fails loudly if the keystore is wrong/replaced (fingerprint check).
+- Loss of the keystore = permanent update breakage: back it up offline (encrypted)
+  and keep the passphrase in a password manager, never in the repo or shell history.

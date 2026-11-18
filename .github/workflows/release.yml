@@ -1,0 +1,60 @@
+name: Release build
+
+# Builds a reproducible UNSIGNED release APK on every vX.Y.Z tag.
+# Signing happens ONLY on the maintainer's machine via scripts/sign-release.sh
+# — the keystore and passphrase never enter CI, secrets, or artifacts.
+# See signing/RELEASE_SIGNING.md for the full identity chain.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout at tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build unsigned release APK
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Confirm APK is unsigned (signing happens locally)
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          if "$APKSIGNER" verify --print-certs "$APK" 2>/dev/null | grep -q "certificate"; then
+            echo "::error::APK must NOT be signed in CI"; exit 1
+          fi
+          echo "OK: unsigned APK built at tag ${{ github.ref_name }}"
+
+      - name: Compute checksum
+        run: sha256sum app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trove-${{ github.ref_name }}-unsigned
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      # Maintainer next steps (local, not CI):
+      #   1. gh run download <run-id> -n trove-<tag>-unsigned
+      #   2. scripts/sign-release.sh app-release.apk <tag>
+      #      -> signs, verifies fingerprint, GPG-signs, publishes release
+      # Reproducibility check: rebuild locally and diff against the CI APK
+      # (strip META-INF/ zip entries before comparing — see TROVE_IMPLEMENTATION.md §5).

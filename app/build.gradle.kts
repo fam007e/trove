@@ -33,7 +33,7 @@ android {
                 storePassword = signingProps.getProperty("storePassword")
                 keyAlias = signingProps.getProperty("keyAlias")
                 keyPassword = signingProps.getProperty("keyPassword")
-                storeType = "JKS"
+                storeType = signingProps.getProperty("storeType", "PKCS12")
             }
         }
     }
