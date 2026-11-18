@@ -56,6 +56,7 @@ class BrowseFragment : Fragment() {
         val context = requireContext()
         val rootLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.parseColor("#2E3440"))
         }
 
         breadcrumbBar = TroveBreadcrumbBar(context).apply {
@@ -128,14 +129,14 @@ class BrowseFragment : Fragment() {
                         putStringArrayListExtra(TroveImageViewerActivity.EXTRA_IMAGE_PATHS, imagePaths)
                         putExtra(TroveImageViewerActivity.EXTRA_START_INDEX, startIndex)
                     }
-                    startActivity(intent)
+                    startTransitionActivity(intent)
                 }
                 is Result.Failure -> {
                     val intent = Intent(context, TroveImageViewerActivity::class.java).apply {
                         putStringArrayListExtra(TroveImageViewerActivity.EXTRA_IMAGE_PATHS, arrayListOf(selectedItem.path))
                         putExtra(TroveImageViewerActivity.EXTRA_START_INDEX, 0)
                     }
-                    startActivity(intent)
+                    startTransitionActivity(intent)
                 }
             }
         }
@@ -145,7 +146,7 @@ class BrowseFragment : Fragment() {
         val intent = Intent(context, TrovePdfViewerActivity::class.java).apply {
             putExtra(TrovePdfViewerActivity.EXTRA_PDF_PATH, item.path)
         }
-        startActivity(intent)
+        startTransitionActivity(intent)
     }
 
     private fun openMediaPlayer(selectedItem: FileItem) {
@@ -162,7 +163,7 @@ class BrowseFragment : Fragment() {
                         putStringArrayListExtra(TrovePlayerActivity.EXTRA_MEDIA_PATHS, mediaPaths)
                         putExtra(TrovePlayerActivity.EXTRA_START_INDEX, startIndex)
                     }
-                    startActivity(intent)
+                    startTransitionActivity(intent)
                 }
                 is Result.Failure -> {
                     TroveMediaRegistry.register(selectedItem)
@@ -170,7 +171,7 @@ class BrowseFragment : Fragment() {
                         putStringArrayListExtra(TrovePlayerActivity.EXTRA_MEDIA_PATHS, arrayListOf(selectedItem.path))
                         putExtra(TrovePlayerActivity.EXTRA_START_INDEX, 0)
                     }
-                    startActivity(intent)
+                    startTransitionActivity(intent)
                 }
             }
         }
@@ -190,12 +191,47 @@ class BrowseFragment : Fragment() {
             when (val result = directory.listFiles()) {
                 is Result.Success -> {
                     adapter.updateItems(result.value)
+                    applyDirectoryTransition()
                 }
                 is Result.Failure -> {
                     Toast.makeText(context, "Error: ${result.exception.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
+    }
+
+    /**
+     * Subtle cascading slide-up and fade-in transition when entering a directory.
+     * 160ms duration with DecelerateInterpolator ensures crisp, non-distracting navigation.
+     */
+    private fun applyDirectoryTransition() {
+        val animSet = android.view.animation.AnimationSet(true).apply {
+            addAnimation(android.view.animation.AlphaAnimation(0.0f, 1.0f).apply {
+                duration = 160
+            })
+            addAnimation(android.view.animation.TranslateAnimation(
+                android.view.animation.Animation.RELATIVE_TO_SELF, 0f,
+                android.view.animation.Animation.RELATIVE_TO_SELF, 0f,
+                android.view.animation.Animation.ABSOLUTE, 24f,
+                android.view.animation.Animation.ABSOLUTE, 0f
+            ).apply {
+                duration = 160
+            })
+            interpolator = android.view.animation.DecelerateInterpolator()
+        }
+        val controller = android.view.animation.LayoutAnimationController(animSet, 0.04f)
+        recyclerView.layoutAnimation = controller
+        recyclerView.scheduleLayoutAnimation()
+    }
+
+    private fun startTransitionActivity(intent: Intent) {
+        val ctx = context ?: return
+        val options = android.app.ActivityOptions.makeCustomAnimation(
+            ctx,
+            android.R.anim.fade_in,
+            android.R.anim.fade_out
+        )
+        startActivity(intent, options.toBundle())
     }
 
     private fun navigateToIndex(index: Int) {

@@ -78,6 +78,7 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
         
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.parseColor("#2E3440"))
         }
 
         val actionBar = LinearLayout(this).apply {
@@ -88,13 +89,17 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
             )
             
             val mountButton = Button(this@BrowseActivity).apply {
-                text = "Add SAF Tab"
+                text = "+ SAF"
+                setTextColor(android.graphics.Color.parseColor("#88C0D0"))
+                setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
                 setOnClickListener { openDocumentTreeLauncher.launch(null) }
             }
             addView(mountButton)
 
             val localButton = Button(this@BrowseActivity).apply {
-                text = "Add Local Tab"
+                text = "+ Storage"
+                setTextColor(android.graphics.Color.parseColor("#ECEFF4"))
+                setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
                 setOnClickListener {
                     val root = Environment.getExternalStorageDirectory()
                     addNewTab(LocalFileItem(root))
@@ -103,7 +108,9 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
             addView(localButton)
 
             val shizukuButton = Button(this@BrowseActivity).apply {
-                text = "Add Shizuku Tab"
+                text = "+ Shizuku"
+                setTextColor(android.graphics.Color.parseColor("#81A1C1"))
+                setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
                 setOnClickListener {
                     tryMountShizuku()
                 }
@@ -138,6 +145,17 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
                     tabBar.selectTab(position, notify = false)
                 }
             })
+            // Subtle Nordic page transformer for smooth, low-latency tab swiping
+            setPageTransformer { page, position ->
+                val absPos = Math.abs(position)
+                if (position < -1f || position > 1f) {
+                    page.alpha = 0f
+                } else {
+                    page.alpha = 1.0f - absPos * 0.15f
+                    page.scaleX = 1.0f - absPos * 0.03f
+                    page.scaleY = 1.0f - absPos * 0.03f
+                }
+            }
         }
         rootLayout.addView(viewPager)
 
