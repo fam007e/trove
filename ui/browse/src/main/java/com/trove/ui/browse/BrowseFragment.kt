@@ -236,18 +236,34 @@ class BrowseFragment : Fragment() {
 
     private fun navigateToIndex(index: Int) {
         val root = rootDirectory ?: return
-        if (index == 0) {
-            loadDirectory(root)
-            return
-        }
+        val current = currentDirectory ?: return
 
-        val pathSegments = currentDirectory?.path?.split("/")?.filter { it.isNotEmpty() } ?: return
-        val targetPath = pathSegments.take(index).joinToString("/")
-        
+        // The breadcrumb displays the absolute path, but resolve() navigates
+        // relative to the tab root. Map the tapped segment index onto a
+        // root-relative path; tapping an ancestor ABOVE the tab root is
+        // clamped to the root (tabs are jailed to where they were opened).
         viewLifecycleOwner.lifecycleScope.launch {
-            when (val result = root.resolve(targetPath)) {
+            val seg = { p: String -> p.split("/").filter { it.isNotEmpty() } }
+            val rootSegs = seg(root.path)
+            val absSegs = seg(current.path)
+
+            val targetRelative = when {
+                // Path shape unexpected (e.g. exotic SAF roots): fall back to root
+                !current.path.startsWith(root.path.trimEnd('/').ifEmpty { "/" }) &&
+                    current.path != root.path -> ""
+                // Ancestor at or above the tab root -> root itself
+                index <= rootSegs.size -> ""
+                // Below the root -> root-relative remainder
+                else -> absSegs.drop(rootSegs.size).take(index - rootSegs.size).joinToString("/")
+            }
+
+            when (val result = root.resolve(targetRelative, jailRoot = root)) {
                 is Result.Success -> loadDirectory(result.value)
-                is Result.Failure -> Toast.makeText(context, "Resolve failed", Toast.LENGTH_SHORT).show()
+                is Result.Failure -> Toast.makeText(
+                    context,
+                    "Resolve failed: ${result.exception.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
