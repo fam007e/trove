@@ -7,6 +7,9 @@ import java.io.IOException
  * @param jailRoot The root FileItem that navigation must be constrained to.
  */
 suspend fun FileItem.resolve(path: String, jailRoot: FileItem? = null): Result<FileItem> {
+    if (path.contains('\u0000')) {
+        return Result.Failure(IllegalArgumentException("Security: Null byte injection detected in path"))
+    }
     if (path.isEmpty() || path == ".") return Result.Success(this)
     
     val parts = path.split("/").filter { it.isNotEmpty() }

@@ -37,12 +37,16 @@ class ArchiveEntryNode(
             val normalized = rawPath.trim().replace('\\', '/').trim('/')
             if (normalized.isEmpty()) return root
 
-            val segments = normalized.split('/')
+            val rawSegments = normalized.split('/')
+            // Security: Zip Slip (CVE-2018-1002201) defense.
+            // Strip any directory traversal ('..'), relative dots ('.'), or illegal path tokens.
+            val segments = rawSegments.filter { it.isNotEmpty() && it != "." && it != ".." }
+            if (segments.isEmpty()) return root
+
             var current = root
 
             for (i in 0 until segments.size - 1) {
                 val seg = segments[i]
-                if (seg.isEmpty()) continue
                 var child = current.findChild(seg)
                 if (child == null) {
                     val subPath = segments.take(i + 1).joinToString("/")
@@ -63,9 +67,10 @@ class ArchiveEntryNode(
                 return existing
             }
 
+            val safeNormalized = segments.joinToString("/")
             val leaf = ArchiveEntryNode(
                 name = leafName,
-                entryPath = normalized,
+                entryPath = safeNormalized,
                 isDirectory = isDirectory,
                 size = size,
                 lastModified = lastModified

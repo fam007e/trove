@@ -72,6 +72,12 @@ class WebDavFileItem(
         try {
             val factory = XmlPullParserFactory.newInstance().apply {
                 isNamespaceAware = false
+                // Security: Disable DOCTYPE and external entity processing (XXE CWE-611 / XML Entity Bomb defense)
+                try {
+                    setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false)
+                } catch (_: Exception) {
+                    // Feature may not be supported by all implementations
+                }
             }
             val parser = factory.newPullParser()
             parser.setInput(StringReader(xml))
