@@ -16,8 +16,15 @@ echo "Project Root: $PROJECT_ROOT"
 TMP_WORK="$(mktemp -d /tmp/trove-repro-XXXXXX)"
 trap 'rm -rf "$TMP_WORK"' EXIT
 
-# Enforce fixed SOURCE_DATE_EPOCH for reproducible timestamps
-export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}"
+# Reproducible Builds Standard: derive timestamp from latest git commit
+if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
+    if git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        export SOURCE_DATE_EPOCH="$(git -C "$PROJECT_ROOT" log -1 --pretty=%ct)"
+    else
+        export SOURCE_DATE_EPOCH="1700000000"
+    fi
+fi
+echo "Using SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH ($(date -u -d "@$SOURCE_DATE_EPOCH" 2>/dev/null || date -u -r "$SOURCE_DATE_EPOCH" 2>/dev/null || echo "UTC"))"
 
 echo "--> [1/3] Building First Independent Release APK (Pass A)..."
 cd "$PROJECT_ROOT"
