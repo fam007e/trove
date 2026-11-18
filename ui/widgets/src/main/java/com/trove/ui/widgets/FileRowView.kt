@@ -92,6 +92,18 @@ class FileRowView(ctx: Context) : View(ctx) {
             }
         }
 
+    /**
+     * Computed directory size (async, cached by the adapter). When null the
+     * row falls back to [FileItem.size], which is 0 for directories.
+     */
+    var displaySize: Long? = null
+        set(v) {
+            if (field != v) {
+                field = v
+                invalidate()
+            }
+        }
+
     private fun animateSelection(selected: Boolean) {
         selectionAnimator?.cancel()
         val target = if (selected) 1f else 0f
@@ -187,7 +199,8 @@ class FileRowView(ctx: Context) : View(ctx) {
         c.drawText(ellipsizedName.toString(), textLeft, height / 2f - context.dp(2f), namePaint)
 
         // Meta (Size and Date)
-        val meta = "${formatSize(fi.size)}  •  ${dateFormatter.format(Date(fi.lastModified))}"
+        val shownSize = displaySize ?: fi.size
+        val meta = "${formatSize(shownSize)}  •  ${dateFormatter.format(Date(fi.lastModified))}"
         c.drawText(meta, textLeft, height / 2f + context.dp(17f), metaPaint)
     }
 

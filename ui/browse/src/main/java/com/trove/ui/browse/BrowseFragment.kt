@@ -99,6 +99,8 @@ class BrowseFragment : Fragment() {
                     openPdfViewer(item)
                 } else if (MediaHelper.isMedia(item.name)) {
                     openMediaPlayer(item)
+                } else if (isTextFile(item.name)) {
+                    openTextEditor(item)
                 } else {
                     openWithExternalApp(item)
                 }
@@ -358,8 +360,30 @@ class BrowseFragment : Fragment() {
         }
     }
 
-    private fun mimeFor(item: FileItem): String {
-        val known = mapOf(
+    /** Extensions the built-in editor handles by default (MiX behavior). */
+    private val textExtensions = setOf(
+        "txt", "md", "json", "xml", "py", "sh", "js", "kt", "java", "html", "htm",
+        "csv", "log", "ini", "yml", "yaml", "c", "h", "cpp", "hpp", "css", "sql",
+        "toml", "gradle", "properties", "php", "rb", "pl", "lua", "conf", "xml"
+    )
+
+    private fun isTextFile(name: String): Boolean =
+        name.substringAfterLast('.', "").lowercase() in textExtensions
+
+    private fun openTextEditor(item: FileItem) {
+        val ctx = context ?: return
+        if (item is com.trove.core.fs.LocalFileItem) {
+            ctx.startActivity(
+                Intent(ctx, TroveTextEditorActivity::class.java)
+                    .putExtra(TroveTextEditorActivity.EXTRA_PATH, item.path)
+            )
+        } else {
+            // Non-local backends edit through a cache copy; opened externally instead
+            openWithExternalApp(item)
+        }
+    }
+
+    private fun mimeFor(item: FileItem): String {        val known = mapOf(
             "py" to "text/x-python", "xml" to "text/xml", "txt" to "text/plain",
             "json" to "application/json", "md" to "text/markdown", "sh" to "text/x-sh",
             "html" to "text/html", "htm" to "text/html", "js" to "text/javascript",

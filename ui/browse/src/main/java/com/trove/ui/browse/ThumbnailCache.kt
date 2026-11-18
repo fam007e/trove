@@ -24,19 +24,62 @@ object ThumbnailCache {
 
     fun get(item: FileItem): Bitmap? = cache.get(key(item))
 
-    suspend fun load(item: FileItem, isVideo: Boolean): Bitmap? = withContext(Dispatchers.IO) {
-        val k = key(item)
-        cache.get(k)?.let { return@withContext it }
-        try {
-            val bmp = if (isVideo) decodeVideoFrame(item) else decodeImage(item)
-            if (bmp != null) cache.put(k, bmp)
-            bmp
-        } catch (_: Exception) {
-            null
+    suspend fun load(item: FileItem, isVideo: Boolean = false, isPdf: Boolean = false): Bitmap? =
+        withContext(Dispatchers.IO) {
+            val k = key(item)
+            cache.get(k)?.let { return@withContext it }
+            try {
+                val bmp = when {
+                    isPdf -> decodePdf(item)
+                    isVideo -> decodeVideoFrame(item)
+                    else -> decodeImage(item)
+                }
+                if (bmp != null) cache.put(k, bmp)
+                bmp
+            } catch (_: Exception) {
+                null
+            }
         }
-    }
 
     private fun key(item: FileItem) = "${item.path}|${item.lastModified}"
+
+    /**
+     * Renders page 1 of a PDF to a thumbnail via the platform PdfRenderer
+     * (the same engine MiX falls back to for thumbnails).
+     */
+    private fun decodePdf(item: FileItem): Bitmap? {
+        val file = java.io.File(item.path)
+        if (!file.exists()) return null
+        val pfd = android.os.ParcelFileDescriptor.open(
+            file, android.os.ParcelFileDescriptor.MODE_READ_ONLY
+        )
+        try {
+            val renderer = android.graphics.pdf.PdfRenderer(pfd)
+            try {
+                if (renderer.pageCount == 0) return null
+                val page = renderer.openPage(0)
+                try {
+                    val scale = TARGET_PX.toFloat() / page.width
+                    val w = (page.width * scale).toInt().coerceAtLeast(1)
+                    val h = (page.height * scale).toInt().coerceAtLeast(1)
+                    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    bmp.eraseColor(0xFFFFFFFF.toInt())
+                    val matrix = android.graphics.Matrix().apply { setScale(scale, scale) }
+                    page.render(
+                        bmp, null, matrix,
+                        android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
+                    )
+                    return bmp
+                } finally {
+                    page.close()
+                }
+            } finally {
+                renderer.close()
+            }
+        } finally {
+            pfd.close()
+        }
+    }
 
     private suspend fun decodeImage(item: FileItem): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
