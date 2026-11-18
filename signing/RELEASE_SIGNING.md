@@ -72,10 +72,10 @@ directory (`*.gpgsig`), made by the GPG key above.
 
 ## Public GitHub release flow (keystore never leaves this machine)
 
-1. Push a tag `vX.Y.Z` -> `.github/workflows/release.yml` builds a reproducible
+1. Push a tag `vYYYY.MM.DD` (e.g. `v2026.11.18`) -> `.github/workflows/release.yml` builds a reproducible
    UNSIGNED APK and uploads it as a workflow artifact (CI refuses signed APKs).
 2. Download the artifact locally, then run in YOUR terminal:
-   `scripts/sign-release.sh app-release.apk vX.Y.Z`
+   `scripts/sign-release.sh app-release.apk vYYYY.MM.DD`
    The script signs (v1+v2+v3), verifies the cert fingerprint against the value
    recorded in this file, produces SHA256SUMS + GPG detached signatures, and
    publishes the GitHub release via `gh` when a tag is passed. GPG steps run in

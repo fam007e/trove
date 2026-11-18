@@ -3,13 +3,13 @@
 # Trove release signing — the ONLY step that ever touches the private keystore.
 #
 # Flow: CI (GitHub Actions) builds a reproducible UNSIGNED APK on every
-# vX.Y.Z tag. You download it, run this script locally, and publish the
+# vYYYY.MM.DD tag. You download it, run this script locally, and publish the
 # signed bundle with `gh release`. The keystore and passphrase never leave
 # this machine and never enter the repo, CI, or any artifact.
 #
 # Usage:
 #   scripts/sign-release.sh <unsigned-or-input.apk> [tag]
-#   scripts/sign-release.sh app-release-unsigned.apk v1.0.0
+#   scripts/sign-release.sh app-release-unsigned.apk v2026.11.18
 #
 # What it does:
 #   1. Signs the APK with the release key (apksigner, v1+v2+v3 schemes)
@@ -41,6 +41,10 @@ APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | 
 
 IN_APK="$(readlink -f "$1")"
 TAG="${2:-}"
+if [ -n "$TAG" ] && ! [[ "$TAG" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}$ ]]; then
+  echo "ERROR: tag '$TAG' does not match vYYYY.MM.DD (e.g. v2026.11.18)" >&2
+  exit 1
+fi
 OUT_DIR="$(mktemp -d)"
 BASE="$(basename "$IN_APK" .apk)"
 SIGNED="$OUT_DIR/${BASE}.apk"

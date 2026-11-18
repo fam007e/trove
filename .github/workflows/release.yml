@@ -1,6 +1,6 @@
 name: Release build
 
-# Builds a reproducible UNSIGNED release APK on every vX.Y.Z tag.
+# Builds a reproducible UNSIGNED release APK on every vYYYY.MM.DD tag.
 # Signing happens ONLY on the maintainer's machine via scripts/sign-release.sh
 # — the keystore and passphrase never enter CI, secrets, or artifacts.
 # See signing/RELEASE_SIGNING.md for the full identity chain.
@@ -20,6 +20,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
+
+      - name: Enforce tag format vYYYY.MM.DD
+        run: |
+          TAG="${{ github.ref_name }}"
+          if ! [[ "$TAG" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}$ ]]; then
+            echo "::error::Tag '$TAG' does not match vYYYY.MM.DD (e.g. v2026.11.18)"; exit 1
+          fi
+          echo "Tag format OK: $TAG"
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
