@@ -3,10 +3,13 @@ package com.trove.ui.browse
 import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -28,6 +31,8 @@ import com.trove.feature.media.TrovePlayerActivity
 import com.trove.feature.media.TroveMediaRegistry
 import com.trove.ui.widgets.TroveBreadcrumbBar
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 class BrowseFragment : Fragment() {
     interface OnDirectoryChangedListener {
@@ -43,13 +48,23 @@ class BrowseFragment : Fragment() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: FileAdapter
     private lateinit var breadcrumbBar: TroveBreadcrumbBar
+    private lateinit var selectionBar: LinearLayout
+    private lateinit var selectionCountView: TextView
+    private lateinit var filterBar: LinearLayout
+    private lateinit var filterLabel: TextView
     private var currentDirectory: FileItem? = null
     private var rootDirectory: FileItem? = null
+    private var searchFilter: String? = null
 
     companion object {
-        // App-wide list settings (persisted in a later pass via SharedPreferences)
-        var sortBy: String = "name"      // "name" | "size" | "date"
-        var showHidden: Boolean = false
+        // Backed by Prefs (persisted); kept as accessors so existing
+        // call sites (BrowseActivity menu) keep working.
+        var sortBy: String
+            get() = Prefs.sortBy
+            set(v) { Prefs.sortBy = v }
+        var showHidden: Boolean
+            get() = Prefs.showHidden
+            set(v) { Prefs.showHidden = v }
 
         fun newInstance(root: FileItem): BrowseFragment {
             val fragment = BrowseFragment()
@@ -64,6 +79,7 @@ class BrowseFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         val context = requireContext()
+        Prefs.init(context)
         val rootLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(android.graphics.Color.parseColor("#2E3440"))
@@ -75,6 +91,75 @@ class BrowseFragment : Fragment() {
             }
         }
         rootLayout.addView(breadcrumbBar)
+
+        // Search filter chip (visible only while a filter is active)
+        filterBar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(android.graphics.Color.parseColor("#434C5E"))
+            setPadding(32, 12, 32, 12)
+            visibility = View.GONE
+        }
+        filterLabel = TextView(context).apply {
+            setTextColor(android.graphics.Color.parseColor("#ECEFF4"))
+            textSize = 13f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        filterBar.addView(filterLabel)
+        filterBar.addView(Button(context).apply {
+            text = "✕"
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setTextColor(android.graphics.Color.parseColor("#BF616A"))
+            setOnClickListener { setSearchFilter(null) }
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+        rootLayout.addView(filterBar)
+
+        // Selection action bar (visible only while items are selected)
+        selectionBar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(android.graphics.Color.parseColor("#4C566A"))
+            setPadding(16, 8, 16, 8)
+            visibility = View.GONE
+        }
+        selectionCountView = TextView(context).apply {
+            setTextColor(android.graphics.Color.parseColor("#88C0D0"))
+            textSize = 14f
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+        }
+        selectionBar.addView(selectionCountView)
+        fun barButton(label: String, onClick: () -> Unit): Button = Button(context).apply {
+            text = label
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setTextColor(android.graphics.Color.parseColor("#ECEFF4"))
+            setMinimumWidth(0)
+            minimumWidth = 0
+            setPadding(20, 0, 20, 0)
+            textSize = 12f
+            setOnClickListener { onClick() }
+        }
+        // Horizontal scroll keeps every action reachable on narrow screens
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        actions.addView(barButton("✎") { renameSelection() })
+        actions.addView(barButton("⚙") { propertiesSelection() })
+        actions.addView(barButton("⧉") { copyOrMoveSelection(move = false) })
+        actions.addView(barButton("⇄") { copyOrMoveSelection(move = true) })
+        actions.addView(barButton("⇪") { shareSelection() })
+        actions.addView(barButton("🗜") { archiveSelection() })
+        actions.addView(barButton("🗑") { deleteSelection() })
+        actions.addView(barButton("✕") { adapter.clearSelection() })
+        selectionBar.addView(android.widget.HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(actions)
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            (44 * resources.displayMetrics.density).toInt()
+        ))
+        rootLayout.addView(selectionBar)
 
         recyclerView = RecyclerView(context).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -89,7 +174,10 @@ class BrowseFragment : Fragment() {
             items = emptyList(),
             scope = lifecycleScope,
             onItemClick = { item ->
-                if (item.isDirectory) {
+                if (adapter.selectedItems.isNotEmpty()) {
+                    // In selection mode taps toggle instead of opening
+                    adapter.toggleSelection(item)
+                } else if (item.isDirectory) {
                     loadDirectory(item)
                 } else if (ArchiveType.isArchive(item)) {
                     openArchive(item)
@@ -106,14 +194,27 @@ class BrowseFragment : Fragment() {
                 }
             },
             onItemLongClick = { item ->
-                showFileProperties(item)
+                adapter.toggleSelection(item)
                 true
             }
         )
+        adapter.onSelectionChanged = { count -> updateSelectionBar(count) }
         recyclerView.adapter = adapter
         rootLayout.addView(recyclerView)
 
         return rootLayout
+    }
+
+    private fun updateSelectionBar(count: Int) {
+        selectionBar.visibility = if (count > 0) View.VISIBLE else View.GONE
+        selectionCountView.text = if (count > 0) "$count selected" else ""
+    }
+
+    private fun setSearchFilter(query: String?) {
+        searchFilter = query?.takeIf { it.isNotBlank() }
+        filterBar.visibility = if (searchFilter != null) View.VISIBLE else View.GONE
+        filterLabel.text = "Filter: \"$searchFilter\" in ${currentDirectory?.name ?: ""}"
+        reload()
     }
 
     private fun openArchive(item: FileItem) {
@@ -240,7 +341,10 @@ class BrowseFragment : Fragment() {
 
     /** Dirs first, then the chosen key; hidden files filtered by the toggle. */
     private fun applyListSettings(list: List<FileItem>): List<FileItem> {
-        val visible = if (showHidden) list else list.filter { !it.name.startsWith(".") }
+        var visible = if (Prefs.showHidden) list else list.filter { !it.name.startsWith(".") }
+        searchFilter?.let { q ->
+            visible = visible.filter { it.name.contains(q, ignoreCase = true) }
+        }
         val (dirs, files) = visible.partition { it.isDirectory }
         val sorted = when (sortBy) {
             "size" -> files.sortedByDescending { it.size }
@@ -277,7 +381,7 @@ class BrowseFragment : Fragment() {
         }
     }
 
-    private fun reload() {
+    fun reload() {
         currentDirectory?.let { loadDirectory(it) }
     }
 
@@ -328,7 +432,7 @@ class BrowseFragment : Fragment() {
     private fun openWithExternalApp(item: FileItem) {
         val ctx = context ?: return
         viewLifecycleOwner.lifecycleScope.launch {
-            val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val file = withContext(Dispatchers.IO) {
                 if (item is com.trove.core.fs.LocalFileItem) {
                     java.io.File(item.path)
                 } else {
@@ -381,6 +485,265 @@ class BrowseFragment : Fragment() {
             // Non-local backends edit through a cache copy; opened externally instead
             openWithExternalApp(item)
         }
+    }
+
+    fun showSearchDialog() {
+        val ctx = context ?: return
+        val input = android.widget.EditText(ctx).apply {
+            setSingleLine(true)
+            hint = "Search in ${currentDirectory?.name ?: ""}"
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle("Search")
+            .setView(input)
+            .setPositiveButton("Filter") { _, _ -> setSearchFilter(input.text.toString()) }
+            .setNegativeButton("Clear", null)
+            .show()
+    }
+
+    // ---- Selection operations ------------------------------------------------
+
+    private fun selectedList(): List<FileItem> = adapter.selectedItems.toList()
+
+    private fun propertiesSelection() {
+        val items = selectedList()
+        if (items.size == 1) showFileProperties(items[0])
+    }
+
+    private fun renameSelection() {
+        val item = selectedList().singleOrNull() ?: return
+        val ctx = context ?: return
+        val input = android.widget.EditText(ctx).apply {
+            setSingleLine(true)
+            setText(item.name)
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle("Rename")
+            .setView(input)
+            .setPositiveButton("Rename") { _, _ ->
+                val newName = input.text.toString().trim()
+                if (newName.isNotEmpty() && newName != item.name) {
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        when (val res = item.rename(newName)) {
+                            is Result.Success -> { adapter.clearSelection(); reload() }
+                            is Result.Failure -> Toast.makeText(
+                                ctx, "Rename failed: ${res.exception.message}", Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun deleteSelection() {
+        val items = selectedList()
+        if (items.isEmpty()) return
+        val ctx = context ?: return
+        AlertDialog.Builder(ctx)
+            .setTitle("Delete ${items.size} item(s)?")
+            .setMessage(items.take(5).joinToString("\n") { it.name } + if (items.size > 5) "\n…" else "")
+            .setPositiveButton("Delete") { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    var failed = 0
+                    withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        items.forEach { if (it.delete() is Result.Failure) failed++ }
+                    }
+                    adapter.clearSelection()
+                    reload()
+                    if (failed > 0) {
+                        Toast.makeText(ctx, "$failed item(s) could not be deleted", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun copyOrMoveSelection(move: Boolean) {
+        val items = selectedList()
+        if (items.isEmpty()) return
+        val ctx = context ?: return
+        DestinationPickerDialog(ctx, viewLifecycleOwner.lifecycleScope) { destDir ->
+            viewLifecycleOwner.lifecycleScope.launch {
+                var ok = 0
+                var failed = 0
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    items.forEach { item ->
+                        val res = if (move) item.moveTo(destDir, item.name)
+                        else item.copyTo(destDir)
+                        if (res is Result.Success) ok++ else failed++
+                    }
+                }
+                adapter.clearSelection()
+                reload()
+                val verb = if (move) "Moved" else "Copied"
+                Toast.makeText(
+                    ctx,
+                    "$verb $ok to ${destDir.path}" + if (failed > 0) " · $failed failed" else "",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }.show()
+    }
+
+    private fun shareSelection() {
+        val items = selectedList()
+        if (items.isEmpty()) return
+        val ctx = context ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val uris = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                items.mapNotNull { item ->
+                    val local = withContext(kotlinx.coroutines.Dispatchers.IO) { stageShareFile(item) }
+                    local?.let {
+                        androidx.core.content.FileProvider.getUriForFile(
+                            ctx, "${ctx.packageName}.fileprovider", it
+                        )
+                    }
+                }
+            }
+            if (uris.isEmpty()) {
+                Toast.makeText(ctx, "Nothing to share", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val intent = if (uris.size == 1) {
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "application/octet-stream"
+                    putExtra(Intent.EXTRA_STREAM, uris[0])
+                }
+            } else {
+                Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = "application/octet-stream"
+                    putParcelableArrayListExtra(
+                        Intent.EXTRA_STREAM, ArrayList(uris)
+                    )
+                }
+            }
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            ctx.startActivity(Intent.createChooser(intent, "Share"))
+        }
+    }
+
+    private suspend fun stageShareFile(item: FileItem): java.io.File? =
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                if (item is com.trove.core.fs.LocalFileItem) {
+                    java.io.File(item.path)
+                } else {
+                    val tmp = java.io.File(requireContext().cacheDir, "share_" + item.name)
+                    item.openInputStream().getOrNull()?.use { i ->
+                        tmp.outputStream().use { o -> i.copyTo(o) }
+                    } ?: return@withContext null
+                    tmp
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+    private fun archiveSelection() {
+        val items = selectedList()
+        if (items.isEmpty()) return
+        val ctx = context ?: return
+        val formats = arrayOf(
+            com.trove.feature.archive.ArchiveType.ZIP,
+            com.trove.feature.archive.ArchiveType.SEVEN_Z,
+            com.trove.feature.archive.ArchiveType.TAR,
+            com.trove.feature.archive.ArchiveType.TAR_GZ,
+            com.trove.feature.archive.ArchiveType.TAR_BZ2,
+            com.trove.feature.archive.ArchiveType.TAR_XZ,
+            com.trove.feature.archive.ArchiveType.GZIP,
+            com.trove.feature.archive.ArchiveType.BZIP2,
+            com.trove.feature.archive.ArchiveType.XZ
+        )
+        val input = android.widget.EditText(ctx).apply { setSingleLine(true); setText("archive") }
+        val spinner = android.widget.Spinner(ctx).apply {
+            adapter = android.widget.ArrayAdapter(
+                ctx, android.R.layout.simple_spinner_dropdown_item,
+                formats.map { it.name.lowercase() }
+            )
+        }
+        val box = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 0)
+            addView(TextView(ctx).apply { text = "Name" })
+            addView(input)
+            addView(TextView(ctx).apply { text = "Format" })
+            addView(spinner)
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle("Archive ${items.size} item(s)")
+            .setView(box)
+            .setPositiveButton("Create") { _, _ ->
+                val format = formats[spinner.selectedItemPosition]
+                val base = input.text.toString().trim().ifEmpty { "archive" }
+                val name = "${base}.${format.defaultExtension}"
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val ctx2 = context ?: return@launch
+                    val dest = when (val res = currentDirectory!!.createFile(name)) {
+                        is Result.Success -> res.value
+                        is Result.Failure -> {
+                            Toast.makeText(ctx2, "Failed: ${res.exception.message}", Toast.LENGTH_LONG).show()
+                            return@launch
+                        }
+                    }
+                    Toast.makeText(ctx2, "Creating $name…", Toast.LENGTH_SHORT).show()
+                    when (val res = com.trove.feature.archive.ArchiveCreator.createArchive(
+                        items, dest, com.trove.feature.archive.ArchiveCreationParams(format = format)
+                    )) {
+                        is Result.Success -> { adapter.clearSelection(); reload() }
+                        is Result.Failure -> Toast.makeText(
+                            ctx2, "Archive failed: ${res.exception.message}", Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    fun showBookmarks() {
+        val ctx = context ?: return
+        val bookmarks = Prefs.bookmarks().toList()
+        if (bookmarks.isEmpty()) {
+            Toast.makeText(ctx, "No bookmarks yet — add one from the menu", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val names = bookmarks.map { it.substringBefore('|') }
+        AlertDialog.Builder(ctx)
+            .setTitle("Bookmarks")
+            .setItems(names.toTypedArray()) { _, which ->
+                val path = bookmarks[which].substringAfter('|')
+                val target = com.trove.core.fs.LocalFileItem(java.io.File(path))
+                loadDirectory(target)
+            }
+            .setPositiveButton("Close", null)
+            .show()
+    }
+
+    fun addBookmark() {
+        val dir = currentDirectory ?: return
+        val name = dir.name.ifEmpty { dir.path }
+        Prefs.addBookmark(name, dir.path)
+        Toast.makeText(context, "Bookmarked: $name", Toast.LENGTH_SHORT).show()
+    }
+
+    /** Extract-all for the current tab when it is rooted at an archive. */
+    fun extractArchiveAll() {
+        val archive = rootDirectory as? ArchiveFileItem ?: return
+        val ctx = context ?: return
+        DestinationPickerDialog(ctx, viewLifecycleOwner.lifecycleScope) { destDir ->
+            viewLifecycleOwner.lifecycleScope.launch {
+                Toast.makeText(ctx, "Extracting to ${destDir.path}…", Toast.LENGTH_SHORT).show()
+                when (val res = com.trove.feature.archive.ArchiveExtractor.extractAll(archive, destDir)) {
+                    is Result.Success -> Toast.makeText(ctx, "Extraction complete", Toast.LENGTH_LONG).show()
+                    is Result.Failure -> Toast.makeText(
+                        ctx, "Extract failed: ${res.exception.message}", Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }.show()
     }
 
     private fun mimeFor(item: FileItem): String {        val known = mapOf(

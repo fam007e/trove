@@ -24,6 +24,10 @@ object ThumbnailCache {
 
     fun get(item: FileItem): Bitmap? = cache.get(key(item))
 
+    fun clear() {
+        cache.evictAll()
+    }
+
     suspend fun load(item: FileItem, isVideo: Boolean = false, isPdf: Boolean = false): Bitmap? =
         withContext(Dispatchers.IO) {
             val k = key(item)

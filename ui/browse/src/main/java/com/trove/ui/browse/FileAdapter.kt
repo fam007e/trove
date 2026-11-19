@@ -28,6 +28,9 @@ class FileAdapter(
     /** Currently selected items, in selection order. */
     val selectedItems: Set<FileItem> get() = selection.selectedItems
 
+    /** Fired whenever the selection changes (count passed). */
+    var onSelectionChanged: ((Int) -> Unit)? = null
+
     class ViewHolder(val view: FileRowView) : RecyclerView.ViewHolder(view)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -121,13 +124,21 @@ class FileAdapter(
         if (index != -1) {
             selection.toggle(item)
             notifyItemChanged(index)
+            onSelectionChanged?.invoke(selectedItems.size)
         }
     }
 
     fun clearSelection() {
         if (selection.clear() > 0) {
             notifyDataSetChanged()
+            onSelectionChanged?.invoke(0)
         }
+    }
+
+    fun selectAll() {
+        items.forEach { selection.toggle(it) }
+        notifyDataSetChanged()
+        onSelectionChanged?.invoke(selectedItems.size)
     }
 
     fun updateItems(newItems: List<FileItem>) {

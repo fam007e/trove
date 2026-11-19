@@ -75,6 +75,7 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Prefs.init(this)
         
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -288,6 +289,16 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
         servers.add(0, 8, 0, "SFTP (port 2222)")
             .setCheckable(true).isChecked = com.trove.server.sftp.SftpServerService.running
 
+        menu.add(0, 9, 0, "Search")
+        menu.add(0, 10, 0, "Refresh")
+        menu.add(0, 11, 0, "Extract all")
+
+        val bookmarks = menu.addSubMenu("Bookmarks")
+        bookmarks.add(0, 12, 0, "Add current folder")
+        bookmarks.add(0, 13, 0, "Go to bookmark…")
+
+        menu.add(0, 14, 0, "Settings")
+
         popup.setOnMenuItemClickListener { item ->
             val fragment = supportFragmentManager
                 .findFragmentByTag("f${viewPager.currentItem}") as? BrowseFragment
@@ -300,6 +311,12 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
                 6 -> fragment?.onMenuAction(BrowseFragment.MenuAction.SERVER_FTP)
                 7 -> fragment?.onMenuAction(BrowseFragment.MenuAction.SERVER_WEBDAV)
                 8 -> fragment?.onMenuAction(BrowseFragment.MenuAction.SERVER_SFTP)
+                9 -> fragment?.showSearchDialog()
+                10 -> fragment?.reload()
+                11 -> fragment?.extractArchiveAll()
+                12 -> fragment?.addBookmark()
+                13 -> fragment?.showBookmarks()
+                14 -> startActivity(android.content.Intent(this, TroveSettingsActivity::class.java))
             }
             true
         }

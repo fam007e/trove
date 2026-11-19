@@ -7,6 +7,11 @@
             android:exported="false"
             android:theme="@style/Theme.AppCompat.NoActionBar"
             android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name="com.trove.ui.browse.TroveSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
     </application>
 
 </manifest>
