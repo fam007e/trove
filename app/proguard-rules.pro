@@ -25,4 +25,5 @@
 -dontwarn com.hierynomus.**
 -dontwarn org.slf4j.**
 -dontwarn sun.misc.**
+-dontwarn sun.security.**
 -dontwarn com.gemalto.jp2.**

@@ -40,12 +40,11 @@ class SftpServerService : Service() {
     private fun startSftpServer(port: Int, rootPath: String, credentialManager: CredentialManager) {
         serviceScope.launch(Dispatchers.IO) {
             try {
-                val lanAddress = NetworkUtils.getLanAddress().hostAddress ?: "127.0.0.1"
                 val hostKeyProvider = HostKeyProviderFactory.createHostKeyProvider(this@SftpServerService)
                 val passwordAuthenticator = SftpPasswordAuthenticator(credentialManager)
 
                 val manager = SftpServerManager(
-                    host = lanAddress,
+                    host = "0.0.0.0",
                     port = port,
                     rootPath = rootPath,
                     keyPairProvider = hostKeyProvider,

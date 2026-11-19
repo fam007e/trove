@@ -16,6 +16,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.trove.core.fs.FileItem
+import com.trove.core.fs.LocalFileItem
 import com.trove.core.fs.Result
 import com.trove.core.fs.resolve
 import com.trove.feature.archive.ArchiveFileItem
@@ -541,20 +542,36 @@ class BrowseFragment : Fragment() {
         val items = selectedList()
         if (items.isEmpty()) return
         val ctx = context ?: return
+
+        // Inside the recycle bin, delete means delete permanently.
+        if (isInTrash()) {
+            AlertDialog.Builder(ctx)
+                .setTitle("Delete ${items.size} item(s) permanently?")
+                .setPositiveButton("Delete forever") { _, _ ->
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        var failed = 0
+                        withContext(Dispatchers.IO) {
+                            items.forEach { if (it.delete() is Result.Failure) failed++ }
+                        }
+                        adapter.clearSelection()
+                        reload()
+                        if (failed > 0) {
+                            Toast.makeText(ctx, "$failed could not be deleted", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
+
         AlertDialog.Builder(ctx)
             .setTitle("Delete ${items.size} item(s)?")
             .setMessage(items.take(5).joinToString("\n") { it.name } + if (items.size > 5) "\n…" else "")
             .setPositiveButton("Delete") { _, _ ->
-                viewLifecycleOwner.lifecycleScope.launch {
-                    var failed = 0
-                    withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        items.forEach { if (it.delete() is Result.Failure) failed++ }
-                    }
+                moveToTrash(items) {
                     adapter.clearSelection()
                     reload()
-                    if (failed > 0) {
-                        Toast.makeText(ctx, "$failed item(s) could not be deleted", Toast.LENGTH_LONG).show()
-                    }
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -565,6 +582,13 @@ class BrowseFragment : Fragment() {
         val items = selectedList()
         if (items.isEmpty()) return
         val ctx = context ?: return
+
+        // In the recycle bin the ⇄ action restores from the trash index.
+        if (isInTrash() && move) {
+            restoreSelection()
+            return
+        }
+
         DestinationPickerDialog(ctx, viewLifecycleOwner.lifecycleScope) { destDir ->
             viewLifecycleOwner.lifecycleScope.launch {
                 var ok = 0
@@ -746,7 +770,188 @@ class BrowseFragment : Fragment() {
         }.show()
     }
 
-    private fun mimeFor(item: FileItem): String {        val known = mapOf(
+    // ---- Network places ------------------------------------------------------
+
+    fun showNetworkDialog() {
+        NetworkDialog(requireContext(), viewLifecycleOwner.lifecycleScope) { _, root ->
+            adapter.clearSelection()
+            (activity as? TabHost)?.openTab(root, root.name.ifEmpty { "Network" })
+                ?: loadDirectory(root)
+        }.show()
+    }
+
+    /** Ask the hosting activity for a new tab (keeps tab state in one place). */
+    interface TabHost {
+        fun openTab(root: FileItem, label: String)
+    }
+
+    // ---- Recycle bin ----------------------------------------------------------
+
+    private fun addTabToActivity(root: FileItem, label: String) {
+        (activity as? TabHost)?.openTab(root, label) ?: loadDirectory(root)
+    }
+
+    private fun trashDir(): LocalFileItem {
+        val root = android.os.Environment.getExternalStorageDirectory()
+        return LocalFileItem(java.io.File(root, ".TroveTrash"))
+    }
+
+    private fun isInTrash(): Boolean =
+        currentDirectory?.path?.startsWith(trashDir().path) == true
+
+    private fun moveToTrash(items: List<FileItem>, onDone: () -> Unit) {
+        val ctx = context ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val trash = withContext(Dispatchers.IO) {
+                val f = java.io.File(trashDir().path)
+                if (!f.exists()) f.mkdirs()
+                LocalFileItem(f)
+            }
+            var ok = 0
+            var failed = 0
+            val indexLines = mutableListOf<String>()
+            withContext(Dispatchers.IO) {
+                items.forEach { item ->
+                    var trashName = item.name
+                    var n = 1
+                    while (trash.findChild(trashName) is Result.Success) {
+                        trashName = "${item.name}_$n"
+                        n++
+                    }
+                    val res = item.moveTo(trash, trashName)
+                    if (res is Result.Success) {
+                        ok++
+                        indexLines += "$trashName|${item.path}"
+                    } else failed++
+                }
+                if (indexLines.isNotEmpty()) {
+                    val indexFile = java.io.File(java.io.File(trash.path), ".trove_trash_index.txt")
+                    indexFile.appendText(indexLines.joinToString("\n", postfix = "\n"))
+                }
+            }
+            onDone()
+            Toast.makeText(ctx, "$ok moved to Recycle bin" + if (failed > 0) " · $failed failed" else "", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun openRecycleBin() {
+        addTabToActivity(trashDir(), "Recycle bin")
+    }
+
+    private fun restoreSelection() {
+        val items = selectedList()
+        if (items.isEmpty()) return
+        val ctx = context ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val index = withContext(Dispatchers.IO) {
+                try {
+                    java.io.File(java.io.File(trashDir().path), ".trove_trash_index.txt")
+                        .readLines().filter { it.contains("|") }
+                        .associate { it.substringBefore("|") to it.substringAfter("|") }
+                } catch (_: Exception) {
+                    emptyMap()
+                }
+            }
+            var ok = 0
+            var failed = 0
+            withContext(Dispatchers.IO) {
+                items.forEach { item ->
+                    val original = index[item.name]
+                    if (original != null) {
+                        val parent = java.io.File(original).parentFile
+                        if (parent != null && parent.exists()) {
+                            val res = item.moveTo(LocalFileItem(parent), item.name)
+                            if (res is Result.Success) ok++ else failed++
+                        } else failed++
+                    } else failed++
+                }
+            }
+            adapter.clearSelection()
+            reload()
+            Toast.makeText(ctx, "Restored $ok" + if (failed > 0) " · $failed failed" else "", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // ---- Search (recursive, bounded) ------------------------------------------
+
+    private var searchResultsMode = false
+
+    fun recursiveSearch(query: String) {
+        val ctx = context ?: return
+        val root = currentDirectory ?: return
+        Toast.makeText(ctx, "Searching recursively…", Toast.LENGTH_SHORT).show()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val results = withContext(Dispatchers.IO) {
+                val found = mutableListOf<FileItem>()
+                val queue = ArrayDeque<FileItem>()
+                queue.add(root)
+                var visited = 0
+                while (queue.isNotEmpty() && found.size < 300 && visited < 2000) {
+                    val dir = queue.removeFirst()
+                    visited++
+                    when (val res = dir.listFiles()) {
+                        is Result.Success -> res.value.forEach {
+                            if (it.isDirectory) queue.add(it)
+                            else if (it.name.contains(query, ignoreCase = true)) found.add(it)
+                        }
+                        is Result.Failure -> { /* skip unreadable dirs */ }
+                    }
+                }
+                found
+            }
+            searchResultsMode = true
+            searchFilter = null
+            adapter.updateItems(results)
+            filterBar.visibility = View.VISIBLE
+            filterLabel.text = "Search \"$query\": ${results.size} results · tap ✕ to clear"
+        }
+    }
+
+    // ---- Tools ----------------------------------------------------------------
+
+    fun checksumSelection() {
+        val item = selectedList().singleOrNull() ?: return
+        val ctx = context ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val hashes = withContext(Dispatchers.IO) {
+                suspend fun digest(algorithm: String): String {
+                    val md = java.security.MessageDigest.getInstance(algorithm)
+                    item.openInputStream().getOrNull()?.use { input ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n <= 0) break
+                            md.update(buf, 0, n)
+                        }
+                    }
+                    return@digest md.digest().joinToString("") { "%02x".format(it) }
+                }
+                mapOf("MD5" to digest("MD5"), "SHA-256" to digest("SHA-256"))
+            }
+            AlertDialog.Builder(ctx)
+                .setTitle(item.name)
+                .setItems(hashes.map { "${it.key}  ${it.value}" }.toTypedArray(), null)
+                .show()
+        }
+    }
+
+    fun openInTerminal() {
+        val ctx = context ?: return
+        val dir = currentDirectory?.path ?: return
+        val termuxIntent = Intent().apply {
+            setClassName("com.termux", "com.termux.app.TermuxActivity")
+            action = "com.termux.app.OPEN_NEW_INSTANCE"
+            data = android.net.Uri.parse(dir)
+        }
+        try {
+            ctx.startActivity(termuxIntent)
+        } catch (_: Exception) {
+            Toast.makeText(ctx, "Termux not installed — install it for terminal access", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun mimeFor(item: FileItem): String {
+        val known = mapOf(
             "py" to "text/x-python", "xml" to "text/xml", "txt" to "text/plain",
             "json" to "application/json", "md" to "text/markdown", "sh" to "text/x-sh",
             "html" to "text/html", "htm" to "text/html", "js" to "text/javascript",

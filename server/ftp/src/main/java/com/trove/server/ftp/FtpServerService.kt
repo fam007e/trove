@@ -46,8 +46,7 @@ class FtpServerService : Service() {
         running = true
         serviceScope.launch(Dispatchers.IO) {
             try {
-                val lanAddress = NetworkUtils.getLanAddress()
-                serverSocket = ServerSocket(port, 50, lanAddress)
+                serverSocket = ServerSocket(port)
                 val root = LocalFileItem(File(rootPath))
                 
                 while (isRunning) {

@@ -33,6 +33,7 @@ dependencies {
     
     // Ktor for WebDAV Client
     implementation(libs.ktorClientCore)
+    implementation(libs.ktorClientAuth)
     implementation(libs.ktorClientOkHttp)
 
     // Testing

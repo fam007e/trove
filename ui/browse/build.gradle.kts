@@ -33,6 +33,7 @@ dependencies {
     implementation(libs.androidxLifecycleRuntimeKtx)
     implementation(project(":ui:widgets"))
     implementation(project(":core:fs"))
+    implementation(project(":core:net"))
     implementation(project(":feature:archive"))
     implementation(project(":feature:image"))
     implementation(project(":feature:pdf"))

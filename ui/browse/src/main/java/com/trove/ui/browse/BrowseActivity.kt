@@ -28,7 +28,7 @@ import com.trove.ui.widgets.TroveTabBar
 import rikka.shizuku.Shizuku
 import java.io.File
 
-class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedListener {
+class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedListener, BrowseFragment.TabHost {
     private lateinit var tabBar: TroveTabBar
     private lateinit var viewPager: ViewPager2
     private val tabs = mutableListOf<FileItem>()
@@ -266,6 +266,14 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
         Shizuku.bindUserService(serviceArgs, shizukuConnection)
     }
 
+    override fun openTab(root: FileItem, label: String) {
+        tabs.add(root)
+        tabBar.addTab(label)
+        viewPager.adapter?.notifyItemInserted(tabs.size - 1)
+        viewPager.currentItem = tabs.size - 1
+        tabBar.selectTab(tabs.size - 1, notify = false)
+    }
+
     private fun showOverflowMenu(anchor: android.view.View) {
         val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
         val menu = popup.menu
@@ -292,10 +300,16 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
         menu.add(0, 9, 0, "Search")
         menu.add(0, 10, 0, "Refresh")
         menu.add(0, 11, 0, "Extract all")
+        menu.add(0, 15, 0, "Add network place…")
+        menu.add(0, 16, 0, "Recycle bin")
 
         val bookmarks = menu.addSubMenu("Bookmarks")
         bookmarks.add(0, 12, 0, "Add current folder")
         bookmarks.add(0, 13, 0, "Go to bookmark…")
+
+        val tools = menu.addSubMenu("Tools")
+        tools.add(0, 17, 0, "Checksum (selected file)")
+        tools.add(0, 18, 0, "Open in terminal")
 
         menu.add(0, 14, 0, "Settings")
 
@@ -317,6 +331,10 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
                 12 -> fragment?.addBookmark()
                 13 -> fragment?.showBookmarks()
                 14 -> startActivity(android.content.Intent(this, TroveSettingsActivity::class.java))
+                15 -> fragment?.showNetworkDialog()
+                16 -> fragment?.openRecycleBin()
+                17 -> fragment?.checksumSelection()
+                18 -> fragment?.openInTerminal()
             }
             true
         }

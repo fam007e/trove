@@ -37,9 +37,7 @@ class WebDavServerService : Service() {
     private fun startWebDavServer(port: Int, rootPath: String) {
         val credentialManager = CredentialManager(this)
         val rootFile = LocalFileItem(File(rootPath))
-        val lanAddress = NetworkUtils.getLanAddress().hostAddress ?: "127.0.0.1"
-
-        server = embeddedServer(Netty, port = port, host = lanAddress) {
+        server = embeddedServer(Netty, port = port, host = "0.0.0.0") {
             install(Authentication) {
                 basic("webdav") {
                     realm = "Trove WebDAV"

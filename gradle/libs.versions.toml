@@ -78,6 +78,7 @@ ktorServerAuth = { group = "io.ktor", name = "ktor-server-auth", version.ref = "
 
 # Clients
 ktorClientCore = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
+ktorClientAuth = { group = "io.ktor", name = "ktor-client-auth", version.ref = "ktor" }
 ktorClientOkHttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
 
 minaSshdCore = { group = "org.apache.sshd", name = "sshd-core", version.ref = "minaSshd" }

@@ -39,4 +39,15 @@ object Prefs {
         set -= "$name|$path"
         prefs.edit().putStringSet("bookmarks", set).apply()
     }
+
+    /** Saved network connections as "PROTOCOL|host|port|user|password|path". */
+    fun savedConnections(): Set<String> =
+        prefs.getStringSet("saved_connections", emptySet()) ?: emptySet()
+
+    fun addSavedConnection(spec: com.trove.core.net.NetworkConnectionFactory.ConnectionSpec) {
+        val entry = "${spec.protocol.name}|${spec.host}|${spec.port}|${spec.user}|${spec.password}|${spec.path}"
+        val set = savedConnections().toMutableSet()
+        set += entry
+        prefs.edit().putStringSet("saved_connections", set).apply()
+    }
 }
