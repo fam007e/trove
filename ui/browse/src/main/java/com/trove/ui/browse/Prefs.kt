@@ -25,6 +25,10 @@ object Prefs {
         get() = prefs.getBoolean("show_hidden", false)
         set(v) = prefs.edit().putBoolean("show_hidden", v).apply()
 
+    var dualPane: Boolean
+        get() = prefs.getBoolean("dual_pane", false)
+        set(v) = prefs.edit().putBoolean("dual_pane", v).apply()
+
     /** Bookmarks as "name|path" pairs. */
     fun bookmarks(): Set<String> = prefs.getStringSet("bookmarks", emptySet()) ?: emptySet()
 

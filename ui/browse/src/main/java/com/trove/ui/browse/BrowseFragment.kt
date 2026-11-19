@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -37,7 +38,10 @@ import kotlinx.coroutines.Dispatchers
 
 class BrowseFragment : Fragment() {
     interface OnDirectoryChangedListener {
-        fun onDirectoryChanged(directory: FileItem)
+        fun onDirectoryChanged(directory: FileItem) {}
+        fun onDirectoryChanged(paneIndex: Int, directory: FileItem) {
+            onDirectoryChanged(directory)
+        }
     }
 
     /** Actions dispatched from the activity's overflow menu. */
@@ -57,6 +61,12 @@ class BrowseFragment : Fragment() {
     private var rootDirectory: FileItem? = null
     private var searchFilter: String? = null
 
+    var paneIndex: Int = 0
+        private set
+
+    val activeDirectory: FileItem?
+        get() = currentDirectory ?: rootDirectory
+
     companion object {
         // Backed by Prefs (persisted); kept as accessors so existing
         // call sites (BrowseActivity menu) keep working.
@@ -67,9 +77,10 @@ class BrowseFragment : Fragment() {
             get() = Prefs.showHidden
             set(v) { Prefs.showHidden = v }
 
-        fun newInstance(root: FileItem): BrowseFragment {
+        fun newInstance(root: FileItem, paneIndex: Int = 0): BrowseFragment {
             val fragment = BrowseFragment()
             fragment.rootDirectory = root
+            fragment.paneIndex = paneIndex
             return fragment
         }
     }
@@ -169,6 +180,14 @@ class BrowseFragment : Fragment() {
                 1.0f
             )
             layoutManager = LinearLayoutManager(context)
+            addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
+                override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                    if (e.action == MotionEvent.ACTION_DOWN) {
+                        (activity as? DualPaneHost)?.notifyPaneActive(paneIndex)
+                    }
+                    return false
+                }
+            })
         }
 
         adapter = FileAdapter(
@@ -301,7 +320,8 @@ class BrowseFragment : Fragment() {
     private fun loadDirectory(directory: FileItem) {
         currentDirectory = directory
         breadcrumbBar.setPath(directory.path)
-        (activity as? OnDirectoryChangedListener)?.onDirectoryChanged(directory)
+        (activity as? OnDirectoryChangedListener)?.onDirectoryChanged(paneIndex, directory)
+        (activity as? DualPaneHost)?.notifyPaneActive(paneIndex)
         
         viewLifecycleOwner.lifecycleScope.launch {
             when (val result = directory.listFiles()) {
@@ -589,27 +609,61 @@ class BrowseFragment : Fragment() {
             return
         }
 
-        DestinationPickerDialog(ctx, viewLifecycleOwner.lifecycleScope) { destDir ->
-            viewLifecycleOwner.lifecycleScope.launch {
-                var ok = 0
-                var failed = 0
-                withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    items.forEach { item ->
-                        val res = if (move) item.moveTo(destDir, item.name)
-                        else item.copyTo(destDir)
-                        if (res is Result.Success) ok++ else failed++
+        val dualHost = activity as? DualPaneHost
+        val oppositeDir = if (dualHost?.isDualPaneActive == true) dualHost.getOppositePaneDirectory(paneIndex) else null
+
+        if (oppositeDir != null) {
+            val oppName = oppositeDir.name.ifEmpty { oppositeDir.path }
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle(if (move) "Move files" else "Copy files")
+                .setMessage("Select destination for ${items.size} file(s):")
+                .setPositiveButton("Other pane ($oppName)") { _, _ ->
+                    executeTransfer(items, oppositeDir, move) {
+                        dualHost?.reloadOppositePane(paneIndex)
                     }
                 }
-                adapter.clearSelection()
-                reload()
-                val verb = if (move) "Moved" else "Copied"
-                Toast.makeText(
-                    ctx,
-                    "$verb $ok to ${destDir.path}" + if (failed > 0) " · $failed failed" else "",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+                .setNeutralButton("Choose folder…") { _, _ ->
+                    DestinationPickerDialog(ctx, viewLifecycleOwner.lifecycleScope) { destDir ->
+                        executeTransfer(items, destDir, move)
+                    }.show()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
+
+        DestinationPickerDialog(ctx, viewLifecycleOwner.lifecycleScope) { destDir ->
+            executeTransfer(items, destDir, move)
         }.show()
+    }
+
+    private fun executeTransfer(
+        items: List<FileItem>,
+        destDir: FileItem,
+        move: Boolean,
+        onComplete: (() -> Unit)? = null
+    ) {
+        val ctx = context ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            var ok = 0
+            var failed = 0
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                items.forEach { item ->
+                    val res = if (move) item.moveTo(destDir, item.name)
+                    else item.copyTo(destDir)
+                    if (res is Result.Success) ok++ else failed++
+                }
+            }
+            adapter.clearSelection()
+            reload()
+            onComplete?.invoke()
+            val verb = if (move) "Moved" else "Copied"
+            Toast.makeText(
+                ctx,
+                "$verb $ok to ${destDir.path}" + if (failed > 0) " · $failed failed" else "",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun shareSelection() {
@@ -738,9 +792,25 @@ class BrowseFragment : Fragment() {
         AlertDialog.Builder(ctx)
             .setTitle("Bookmarks")
             .setItems(names.toTypedArray()) { _, which ->
-                val path = bookmarks[which].substringAfter('|')
+                val chosen = bookmarks[which]
+                val name = chosen.substringBefore('|')
+                val path = chosen.substringAfter('|')
                 val target = com.trove.core.fs.LocalFileItem(java.io.File(path))
-                loadDirectory(target)
+
+                AlertDialog.Builder(ctx)
+                    .setTitle(name)
+                    .setMessage(path)
+                    .setPositiveButton("Open") { _, _ -> loadDirectory(target) }
+                    .setNeutralButton("Open in new tab") { _, _ ->
+                        (activity as? DualPaneHost)?.openTab(paneIndex, target, name)
+                            ?: (activity as? TabHost)?.openTab(target, name)
+                            ?: loadDirectory(target)
+                    }
+                    .setNegativeButton("Delete") { _, _ ->
+                        Prefs.removeBookmark(name, path)
+                        Toast.makeText(ctx, "Removed bookmark \"$name\"", Toast.LENGTH_SHORT).show()
+                    }
+                    .show()
             }
             .setPositiveButton("Close", null)
             .show()
@@ -775,7 +845,8 @@ class BrowseFragment : Fragment() {
     fun showNetworkDialog() {
         NetworkDialog(requireContext(), viewLifecycleOwner.lifecycleScope) { _, root ->
             adapter.clearSelection()
-            (activity as? TabHost)?.openTab(root, root.name.ifEmpty { "Network" })
+            (activity as? DualPaneHost)?.openTab(paneIndex, root, root.name.ifEmpty { "Network" })
+                ?: (activity as? TabHost)?.openTab(root, root.name.ifEmpty { "Network" })
                 ?: loadDirectory(root)
         }.show()
     }
@@ -788,7 +859,9 @@ class BrowseFragment : Fragment() {
     // ---- Recycle bin ----------------------------------------------------------
 
     private fun addTabToActivity(root: FileItem, label: String) {
-        (activity as? TabHost)?.openTab(root, label) ?: loadDirectory(root)
+        (activity as? DualPaneHost)?.openTab(paneIndex, root, label)
+            ?: (activity as? TabHost)?.openTab(root, label)
+            ?: loadDirectory(root)
     }
 
     private fun trashDir(): LocalFileItem {
@@ -960,7 +1033,7 @@ class BrowseFragment : Fragment() {
             "yaml" to "text/plain", "apk" to "application/vnd.android.package-archive"
         )
         val ext = item.name.substringAfterLast('.', "").lowercase()
-        val probed = item.mimeType?.takeIf {
+        val probed = item.mimeType.takeIf {
             it.isNotBlank() && it != "application/octet-stream"
         }
         return probed ?: known[ext]

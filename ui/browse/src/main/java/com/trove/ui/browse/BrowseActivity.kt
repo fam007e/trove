@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.os.IBinder
+import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.Toast
@@ -28,11 +29,29 @@ import com.trove.ui.widgets.TroveTabBar
 import rikka.shizuku.Shizuku
 import java.io.File
 
-class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedListener, BrowseFragment.TabHost {
-    private lateinit var tabBar: TroveTabBar
-    private lateinit var viewPager: ViewPager2
-    private val tabs = mutableListOf<FileItem>()
-    
+class BrowseActivity : AppCompatActivity(),
+    BrowseFragment.OnDirectoryChangedListener,
+    BrowseFragment.TabHost,
+    DualPaneHost {
+
+    private val dualPaneState = DualPaneState()
+
+    // Pane 0 (Primary)
+    private lateinit var tabBar0: TroveTabBar
+    private lateinit var viewPager0: ViewPager2
+    private val pane0Tabs = mutableListOf<FileItem>()
+    private lateinit var pane0Container: LinearLayout
+
+    // Pane 1 (Secondary / Dual pane)
+    private lateinit var tabBar1: TroveTabBar
+    private lateinit var viewPager1: ViewPager2
+    private val pane1Tabs = mutableListOf<FileItem>()
+    private lateinit var pane1Container: LinearLayout
+
+    // Layout containers
+    private lateinit var panesContainer: LinearLayout
+    private lateinit var paneDivider: View
+
     private var privilegedService: ITrovePrivileged? = null
 
     private val openDocumentTreeLauncher = registerForActivityResult(
@@ -56,12 +75,12 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
     private val shizukuConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             privilegedService = ITrovePrivileged.Stub.asInterface(service)
-            // Add root privileged tab
+            // Add root privileged tab to active pane
             privilegedService?.let {
                 try {
                     val rootPath = "/sdcard"
                     val rootStat = it.stat(rootPath)
-                    addNewTab(PrivilegedFileItem(it, rootStat, rootPath))
+                    addNewTab(dualPaneState.activePaneIndex, PrivilegedFileItem(it, rootStat, rootPath))
                 } catch (e: Exception) {
                     Toast.makeText(this@BrowseActivity, "Failed to mount Shizuku root", Toast.LENGTH_SHORT).show()
                 }
@@ -76,7 +95,8 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Prefs.init(this)
-        
+        dualPaneState.setDualPane(Prefs.dualPane)
+
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(android.graphics.Color.parseColor("#2E3440"))
@@ -88,7 +108,7 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-            
+
             val mountButton = Button(this@BrowseActivity).apply {
                 text = "+ SAF"
                 setTextColor(android.graphics.Color.parseColor("#88C0D0"))
@@ -103,7 +123,7 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
                 setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
                 setOnClickListener {
                     val root = Environment.getExternalStorageDirectory()
-                    addNewTab(LocalFileItem(root))
+                    addNewTab(dualPaneState.activePaneIndex, LocalFileItem(root))
                 }
             }
             addView(localButton)
@@ -118,7 +138,7 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
             }
             addView(shizukuButton)
 
-            // Overflow menu (sort / hidden files / new folder / servers)
+            // Overflow menu (sort / hidden files / new folder / servers / dual pane)
             val menuButton = Button(this@BrowseActivity).apply {
                 text = "⋮"
                 setTextColor(android.graphics.Color.parseColor("#ECEFF4"))
@@ -129,43 +149,132 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
         }
         rootLayout.addView(actionBar)
 
-        tabBar = TroveTabBar(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                (44 * resources.displayMetrics.density).toInt()
-            )
-            setOnTabSelectedListener { index ->
-                if (viewPager.currentItem != index) {
-                    viewPager.currentItem = index
-                }
-            }
-            // Long-press a tab to close it (the last tab stays)
-            onTabLongClickListener = { index ->
-                if (tabs.size > 1) {
-                    tabs.removeAt(index)
-                    tabBar.removeTab(index)
-                    viewPager.adapter?.notifyItemRemoved(index)
-                    val target = index.coerceAtMost(tabs.size - 1)
-                    viewPager.currentItem = target
-                    tabBar.selectTab(target, notify = false)
-                } else {
-                    Toast.makeText(this@BrowseActivity, "Cannot close the last tab", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-        rootLayout.addView(tabBar)
-
-        viewPager = ViewPager2(this).apply {
+        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        panesContainer = LinearLayout(this).apply {
+            orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
                 1.0f
             )
-            adapter = TabAdapter(this@BrowseActivity)
+        }
+
+        // Setup Pane 0
+        tabBar0 = createTabBar(0)
+        viewPager0 = createViewPager(0, pane0Tabs, tabBar0)
+        setupTabClose(0, tabBar0, viewPager0, pane0Tabs)
+
+        pane0Container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                if (isLandscape) 0 else LinearLayout.LayoutParams.MATCH_PARENT,
+                if (isLandscape) LinearLayout.LayoutParams.MATCH_PARENT else 0,
+                1.0f
+            )
+            addView(tabBar0)
+            addView(viewPager0)
+        }
+        panesContainer.addView(pane0Container)
+
+        // Setup Pane Divider
+        val dividerPx = (2 * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+        paneDivider = View(this).apply {
+            setBackgroundColor(android.graphics.Color.parseColor("#4C566A"))
+            layoutParams = LinearLayout.LayoutParams(
+                if (isLandscape) dividerPx else LinearLayout.LayoutParams.MATCH_PARENT,
+                if (isLandscape) LinearLayout.LayoutParams.MATCH_PARENT else dividerPx
+            )
+            visibility = if (dualPaneState.isDualPane) View.VISIBLE else View.GONE
+        }
+        panesContainer.addView(paneDivider)
+
+        // Setup Pane 1
+        tabBar1 = createTabBar(1)
+        viewPager1 = createViewPager(1, pane1Tabs, tabBar1)
+        setupTabClose(1, tabBar1, viewPager1, pane1Tabs)
+
+        pane1Container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                if (isLandscape) 0 else LinearLayout.LayoutParams.MATCH_PARENT,
+                if (isLandscape) LinearLayout.LayoutParams.MATCH_PARENT else 0,
+                1.0f
+            )
+            visibility = if (dualPaneState.isDualPane) View.VISIBLE else View.GONE
+            addView(tabBar1)
+            addView(viewPager1)
+        }
+        panesContainer.addView(pane1Container)
+
+        rootLayout.addView(panesContainer)
+        setContentView(rootLayout)
+
+        onBackPressedDispatcher.addCallback(this) {
+            val activeIndex = dualPaneState.activePaneIndex
+            val activePager = if (activeIndex == 0) viewPager0 else viewPager1
+            val tag = "f${(activeIndex * 10000L) + activePager.currentItem}"
+            val currentFragment = supportFragmentManager.findFragmentByTag(tag) as? BrowseFragment
+            if (currentFragment?.handleBackPressed() != true) {
+                if (activeIndex == 1) {
+                    dualPaneState.setActivePane(0)
+                    updatePaneFocusUi()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        }
+
+        // Initialize pane 0 with default internal storage tab
+        val root = Environment.getExternalStorageDirectory()
+        addNewTab(0, LocalFileItem(root))
+
+        // Restore persisted SAF root if any
+        getPreferences(MODE_PRIVATE).getString("saf_root", null)?.let {
+            addNewSafTab(Uri.parse(it))
+        }
+
+        // If dual pane was saved as enabled, initialize pane 1
+        if (dualPaneState.isDualPane) {
+            updateDualPaneVisibility()
+        }
+
+        ensureAllFilesAccess()
+    }
+
+    private fun createTabBar(paneIndex: Int): TroveTabBar {
+        return TroveTabBar(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (44 * resources.displayMetrics.density).toInt()
+            )
+            setOnTabSelectedListener { index ->
+                notifyPaneActive(paneIndex)
+                val pager = if (paneIndex == 0) viewPager0 else viewPager1
+                if (pager.currentItem != index) {
+                    pager.currentItem = index
+                }
+            }
+        }
+    }
+
+    private fun createViewPager(
+        paneIndex: Int,
+        tabList: MutableList<FileItem>,
+        bar: TroveTabBar
+    ): ViewPager2 {
+        return ViewPager2(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1.0f
+            )
+            adapter = PaneTabAdapter(this@BrowseActivity, paneIndex, tabList)
             registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
                 override fun onPageSelected(position: Int) {
                     super.onPageSelected(position)
-                    tabBar.selectTab(position, notify = false)
+                    bar.selectTab(position, notify = false)
+                    notifyPaneActive(paneIndex)
                 }
             })
             // Subtle Nordic page transformer for smooth, low-latency tab swiping
@@ -180,28 +289,163 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
                 }
             }
         }
-        rootLayout.addView(viewPager)
+    }
 
-        setContentView(rootLayout)
-
-        onBackPressedDispatcher.addCallback(this) {
-            val currentFragment = supportFragmentManager.findFragmentByTag("f${viewPager.currentItem}") as? BrowseFragment
-            if (currentFragment?.handleBackPressed() != true) {
-                isEnabled = false
-                onBackPressedDispatcher.onBackPressed()
+    private fun setupTabClose(
+        paneIndex: Int,
+        bar: TroveTabBar,
+        pager: ViewPager2,
+        tabList: MutableList<FileItem>
+    ) {
+        bar.onTabLongClickListener = { index ->
+            if (tabList.size > 1) {
+                tabList.removeAt(index)
+                bar.removeTab(index)
+                pager.adapter?.notifyItemRemoved(index)
+                val target = index.coerceAtMost(tabList.size - 1)
+                pager.currentItem = target
+                bar.selectTab(target, notify = false)
+            } else {
+                Toast.makeText(this@BrowseActivity, "Cannot close the last tab", Toast.LENGTH_SHORT).show()
             }
         }
+    }
 
-        // Initialize with default internal storage tab
-        val root = Environment.getExternalStorageDirectory()
-        addNewTab(LocalFileItem(root))
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyPaneOrientation(newConfig.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
+    }
 
-        // Restore persisted SAF root if any
-        getPreferences(MODE_PRIVATE).getString("saf_root", null)?.let {
-            addNewSafTab(Uri.parse(it))
+    private fun applyPaneOrientation(isLandscape: Boolean) {
+        panesContainer.orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        val dividerPx = (2 * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+
+        pane0Container.layoutParams = LinearLayout.LayoutParams(
+            if (isLandscape) 0 else LinearLayout.LayoutParams.MATCH_PARENT,
+            if (isLandscape) LinearLayout.LayoutParams.MATCH_PARENT else 0,
+            1.0f
+        )
+        paneDivider.layoutParams = LinearLayout.LayoutParams(
+            if (isLandscape) dividerPx else LinearLayout.LayoutParams.MATCH_PARENT,
+            if (isLandscape) LinearLayout.LayoutParams.MATCH_PARENT else dividerPx
+        )
+        pane1Container.layoutParams = LinearLayout.LayoutParams(
+            if (isLandscape) 0 else LinearLayout.LayoutParams.MATCH_PARENT,
+            if (isLandscape) LinearLayout.LayoutParams.MATCH_PARENT else 0,
+            1.0f
+        )
+    }
+
+    private fun toggleDualPane() {
+        val enabled = dualPaneState.toggleDualPane()
+        Prefs.dualPane = enabled
+        updateDualPaneVisibility()
+        Toast.makeText(
+            this,
+            if (enabled) "Dual pane enabled" else "Dual pane disabled",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun updateDualPaneVisibility() {
+        val isDual = dualPaneState.isDualPane
+        paneDivider.visibility = if (isDual) View.VISIBLE else View.GONE
+        pane1Container.visibility = if (isDual) View.VISIBLE else View.GONE
+
+        if (isDual && pane1Tabs.isEmpty()) {
+            val root = Environment.getExternalStorageDirectory()
+            addNewTab(1, LocalFileItem(root))
         }
+        updatePaneFocusUi()
+    }
 
-        ensureAllFilesAccess()
+    private fun updatePaneFocusUi() {
+        if (!dualPaneState.isDualPane) {
+            tabBar0.setBackgroundColor(android.graphics.Color.parseColor("#2E3440"))
+            return
+        }
+        val active0 = dualPaneState.activePaneIndex == 0
+        tabBar0.setBackgroundColor(android.graphics.Color.parseColor(if (active0) "#3B4252" else "#242933"))
+        tabBar1.setBackgroundColor(android.graphics.Color.parseColor(if (!active0) "#3B4252" else "#242933"))
+        paneDivider.setBackgroundColor(android.graphics.Color.parseColor(if (active0) "#81A1C1" else "#88C0D0"))
+    }
+
+    // ---- DualPaneHost implementation -----------------------------------------
+
+    override val isDualPaneActive: Boolean
+        get() = dualPaneState.isDualPane
+
+    override val activePaneIndex: Int
+        get() = dualPaneState.activePaneIndex
+
+    override fun getOppositePaneDirectory(currentPaneIndex: Int): FileItem? {
+        if (!dualPaneState.isDualPane) return null
+        val oppIndex = if (currentPaneIndex == 0) 1 else 0
+        val oppPager = if (oppIndex == 0) viewPager0 else viewPager1
+        val oppTabs = if (oppIndex == 0) pane0Tabs else pane1Tabs
+        val tag = "f${(oppIndex * 10000L) + oppPager.currentItem}"
+        val frag = supportFragmentManager.findFragmentByTag(tag) as? BrowseFragment
+        return frag?.activeDirectory ?: oppTabs.getOrNull(oppPager.currentItem)
+    }
+
+    override fun reloadOppositePane(currentPaneIndex: Int) {
+        if (!dualPaneState.isDualPane) return
+        val oppIndex = if (currentPaneIndex == 0) 1 else 0
+        val oppPager = if (oppIndex == 0) viewPager0 else viewPager1
+        val tag = "f${(oppIndex * 10000L) + oppPager.currentItem}"
+        (supportFragmentManager.findFragmentByTag(tag) as? BrowseFragment)?.reload()
+    }
+
+    override fun notifyPaneActive(paneIndex: Int) {
+        if (dualPaneState.setActivePane(paneIndex)) {
+            updatePaneFocusUi()
+        }
+    }
+
+    override fun openTab(paneIndex: Int, root: FileItem, label: String) {
+        val tabList = if (paneIndex == 0) pane0Tabs else pane1Tabs
+        val bar = if (paneIndex == 0) tabBar0 else tabBar1
+        val pager = if (paneIndex == 0) viewPager0 else viewPager1
+
+        tabList.add(root)
+        bar.addTab(label)
+        pager.adapter?.notifyItemInserted(tabList.size - 1)
+        pager.currentItem = tabList.size - 1
+        bar.selectTab(tabList.size - 1, notify = false)
+        notifyPaneActive(paneIndex)
+    }
+
+    override fun openTab(root: FileItem, label: String) {
+        openTab(dualPaneState.activePaneIndex, root, label)
+    }
+
+    private fun addNewTab(paneIndex: Int, root: FileItem) {
+        val tabList = if (paneIndex == 0) pane0Tabs else pane1Tabs
+        val bar = if (paneIndex == 0) tabBar0 else tabBar1
+        val pager = if (paneIndex == 0) viewPager0 else viewPager1
+
+        tabList.add(root)
+        val title = if (root.name.isEmpty()) "Root" else root.name
+        bar.addTab(title)
+        pager.adapter?.notifyItemInserted(tabList.size - 1)
+        pager.currentItem = tabList.size - 1
+        bar.selectTab(tabList.size - 1, notify = false)
+        notifyPaneActive(paneIndex)
+    }
+
+    override fun onDirectoryChanged(directory: FileItem) {
+        onDirectoryChanged(dualPaneState.activePaneIndex, directory)
+    }
+
+    override fun onDirectoryChanged(paneIndex: Int, directory: FileItem) {
+        val tabList = if (paneIndex == 0) pane0Tabs else pane1Tabs
+        val bar = if (paneIndex == 0) tabBar0 else tabBar1
+        val pager = if (paneIndex == 0) viewPager0 else viewPager1
+        val current = pager.currentItem
+        if (current in tabList.indices) {
+            val label = if (directory.name.isEmpty()) "Root" else directory.name
+            bar.updateTab(current, label)
+        }
     }
 
     /**
@@ -266,15 +510,7 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
         Shizuku.bindUserService(serviceArgs, shizukuConnection)
     }
 
-    override fun openTab(root: FileItem, label: String) {
-        tabs.add(root)
-        tabBar.addTab(label)
-        viewPager.adapter?.notifyItemInserted(tabs.size - 1)
-        viewPager.currentItem = tabs.size - 1
-        tabBar.selectTab(tabs.size - 1, notify = false)
-    }
-
-    private fun showOverflowMenu(anchor: android.view.View) {
+    private fun showOverflowMenu(anchor: View) {
         val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
         val menu = popup.menu
 
@@ -311,11 +547,17 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
         tools.add(0, 17, 0, "Checksum (selected file)")
         tools.add(0, 18, 0, "Open in terminal")
 
+        menu.add(0, 19, 0, "Dual pane")
+            .setCheckable(true).isChecked = dualPaneState.isDualPane
+
         menu.add(0, 14, 0, "Settings")
 
         popup.setOnMenuItemClickListener { item ->
-            val fragment = supportFragmentManager
-                .findFragmentByTag("f${viewPager.currentItem}") as? BrowseFragment
+            val activeIndex = dualPaneState.activePaneIndex
+            val activePager = if (activeIndex == 0) viewPager0 else viewPager1
+            val tag = "f${(activeIndex * 10000L) + activePager.currentItem}"
+            val fragment = supportFragmentManager.findFragmentByTag(tag) as? BrowseFragment
+
             when (item.itemId) {
                 1 -> { BrowseFragment.sortBy = "name"; fragment?.onMenuAction(BrowseFragment.MenuAction.SORT_NAME) }
                 2 -> { BrowseFragment.sortBy = "size"; fragment?.onMenuAction(BrowseFragment.MenuAction.SORT_SIZE) }
@@ -335,27 +577,11 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
                 16 -> fragment?.openRecycleBin()
                 17 -> fragment?.checksumSelection()
                 18 -> fragment?.openInTerminal()
+                19 -> toggleDualPane()
             }
             true
         }
         popup.show()
-    }
-
-    private fun addNewTab(root: FileItem) {
-        tabs.add(root)
-        val title = if (root.name.isEmpty()) "Root" else root.name
-        tabBar.addTab(title)
-        viewPager.adapter?.notifyItemInserted(tabs.size - 1)
-        viewPager.currentItem = tabs.size - 1
-        tabBar.selectTab(tabs.size - 1, notify = false)
-    }
-
-    override fun onDirectoryChanged(directory: FileItem) {
-        val current = viewPager.currentItem
-        if (current in tabs.indices) {
-            val label = if (directory.name.isEmpty()) "Root" else directory.name
-            tabBar.updateTab(current, label)
-        }
     }
 
     private fun addNewSafTab(uri: Uri) {
@@ -367,14 +593,23 @@ class BrowseActivity : AppCompatActivity(), BrowseFragment.OnDirectoryChangedLis
 
         val rootDoc = DocumentFile.fromTreeUri(this, uri)
         if (rootDoc != null) {
-            addNewTab(ScopedFileItem(this, rootDoc, uri, "/"))
+            addNewTab(dualPaneState.activePaneIndex, ScopedFileItem(this, rootDoc, uri, "/"))
         }
     }
 
-    private inner class TabAdapter(activity: AppCompatActivity) : FragmentStateAdapter(activity) {
-        override fun getItemCount(): Int = tabs.size
+    private inner class PaneTabAdapter(
+        activity: AppCompatActivity,
+        private val paneIndex: Int,
+        private val tabList: MutableList<FileItem>
+    ) : FragmentStateAdapter(activity) {
+        override fun getItemCount(): Int = tabList.size
+        override fun getItemId(position: Int): Long = (paneIndex * 10000L) + position
+        override fun containsItem(itemId: Long): Boolean {
+            val pos = (itemId - (paneIndex * 10000L)).toInt()
+            return pos in tabList.indices
+        }
         override fun createFragment(position: Int): Fragment {
-            return BrowseFragment.newInstance(tabs[position])
+            return BrowseFragment.newInstance(tabList[position], paneIndex)
         }
     }
 }
