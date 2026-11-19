@@ -73,6 +73,7 @@ class FileRowView(ctx: Context) : View(ctx) {
     var item: FileItem? = null
         set(v) {
             field = v
+            contentDescription = v?.name
             // Dynamic icon tint based on item type
             iconPaint.color = when {
                 v == null -> colorNord3

@@ -382,10 +382,10 @@ class BrowseFragment : Fragment() {
     /** Entry point for the activity's overflow menu. */
     fun onMenuAction(action: MenuAction) {
         when (action) {
-            MenuAction.SORT_NAME -> { sortBy = "name"; reload() }
-            MenuAction.SORT_SIZE -> { sortBy = "size"; reload() }
-            MenuAction.SORT_DATE -> { sortBy = "date"; reload() }
-            MenuAction.TOGGLE_HIDDEN -> { showHidden = !showHidden; reload() }
+            MenuAction.SORT_NAME -> reload()  // Value already set by BrowseActivity
+            MenuAction.SORT_SIZE -> reload()
+            MenuAction.SORT_DATE -> reload()
+            MenuAction.TOGGLE_HIDDEN -> reload()  // Value already toggled by BrowseActivity
             MenuAction.NEW_FOLDER -> showNewFolderDialog()
             MenuAction.SERVER_FTP -> toggleServer(
                 com.trove.server.ftp.FtpServerService::class.java,
@@ -403,7 +403,7 @@ class BrowseFragment : Fragment() {
     }
 
     fun reload() {
-        currentDirectory?.let { loadDirectory(it) }
+        (currentDirectory ?: rootDirectory)?.let { loadDirectory(it) }
     }
 
     private fun toggleServer(service: Class<*>, running: Boolean, label: String) {

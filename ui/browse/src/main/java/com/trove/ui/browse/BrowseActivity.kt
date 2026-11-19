@@ -559,16 +559,19 @@ class BrowseActivity : AppCompatActivity(),
             val fragment = supportFragmentManager.findFragmentByTag(tag) as? BrowseFragment
 
             when (item.itemId) {
-                1 -> { BrowseFragment.sortBy = "name"; fragment?.onMenuAction(BrowseFragment.MenuAction.SORT_NAME) }
-                2 -> { BrowseFragment.sortBy = "size"; fragment?.onMenuAction(BrowseFragment.MenuAction.SORT_SIZE) }
-                3 -> { BrowseFragment.sortBy = "date"; fragment?.onMenuAction(BrowseFragment.MenuAction.SORT_DATE) }
-                4 -> { BrowseFragment.showHidden = !BrowseFragment.showHidden; fragment?.onMenuAction(BrowseFragment.MenuAction.TOGGLE_HIDDEN) }
+                1 -> { BrowseFragment.sortBy = "name"; reloadAllPanes(BrowseFragment.MenuAction.SORT_NAME) }
+                2 -> { BrowseFragment.sortBy = "size"; reloadAllPanes(BrowseFragment.MenuAction.SORT_SIZE) }
+                3 -> { BrowseFragment.sortBy = "date"; reloadAllPanes(BrowseFragment.MenuAction.SORT_DATE) }
+                4 -> {
+                    BrowseFragment.showHidden = !BrowseFragment.showHidden
+                    reloadAllPanes(BrowseFragment.MenuAction.TOGGLE_HIDDEN)
+                }
                 5 -> fragment?.onMenuAction(BrowseFragment.MenuAction.NEW_FOLDER)
                 6 -> fragment?.onMenuAction(BrowseFragment.MenuAction.SERVER_FTP)
                 7 -> fragment?.onMenuAction(BrowseFragment.MenuAction.SERVER_WEBDAV)
                 8 -> fragment?.onMenuAction(BrowseFragment.MenuAction.SERVER_SFTP)
                 9 -> fragment?.showSearchDialog()
-                10 -> fragment?.reload()
+                10 -> reloadAllPanes()
                 11 -> fragment?.extractArchiveAll()
                 12 -> fragment?.addBookmark()
                 13 -> fragment?.showBookmarks()
@@ -582,6 +585,15 @@ class BrowseActivity : AppCompatActivity(),
             true
         }
         popup.show()
+    }
+
+    private fun reloadAllPanes(action: BrowseFragment.MenuAction? = null) {
+        val f0 = supportFragmentManager.findFragmentByTag("f${viewPager0.currentItem}") as? BrowseFragment
+        if (action != null) f0?.onMenuAction(action) else f0?.reload()
+        if (dualPaneState.isDualPane) {
+            val f1 = supportFragmentManager.findFragmentByTag("f${10000 + viewPager1.currentItem}") as? BrowseFragment
+            if (action != null) f1?.onMenuAction(action) else f1?.reload()
+        }
     }
 
     private fun addNewSafTab(uri: Uri) {
