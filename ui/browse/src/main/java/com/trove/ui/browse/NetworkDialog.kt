@@ -64,6 +64,54 @@ class NetworkDialog(
         val passField = field("password", "", password = true)
         val pathField = field("path / share (optional)")
 
+        typeSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val proto = protocols[position]
+                when (proto) {
+                    NetworkConnectionFactory.Protocol.TERABOX -> {
+                        hostField.visibility = View.GONE
+                        portField.visibility = View.GONE
+                        userField.visibility = View.VISIBLE
+                        userField.hint = "Account name (optional)"
+                        passField.visibility = View.VISIBLE
+                        passField.hint = "ndus cookie token"
+                        pathField.visibility = View.GONE
+                    }
+                    NetworkConnectionFactory.Protocol.MEDIAFIRE -> {
+                        hostField.visibility = View.GONE
+                        portField.visibility = View.GONE
+                        userField.visibility = View.VISIBLE
+                        userField.hint = "Email"
+                        passField.visibility = View.VISIBLE
+                        passField.hint = "Password"
+                        pathField.visibility = View.GONE
+                    }
+                    NetworkConnectionFactory.Protocol.GOOGLE_DRIVE,
+                    NetworkConnectionFactory.Protocol.DROPBOX,
+                    NetworkConnectionFactory.Protocol.ONEDRIVE -> {
+                        hostField.visibility = View.GONE
+                        portField.visibility = View.GONE
+                        userField.visibility = View.VISIBLE
+                        userField.hint = "OAuth Client ID (optional)"
+                        passField.visibility = View.GONE
+                        pathField.visibility = View.GONE
+                    }
+                    else -> {
+                        hostField.visibility = View.VISIBLE
+                        hostField.hint = "host"
+                        portField.visibility = View.VISIBLE
+                        portField.setText(proto.defaultPort.toString())
+                        userField.visibility = View.VISIBLE
+                        userField.hint = "user"
+                        passField.visibility = View.VISIBLE
+                        passField.hint = "password"
+                        pathField.visibility = View.VISIBLE
+                    }
+                }
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+
         box.addView(hostField)
         box.addView(portField)
         box.addView(userField)
@@ -107,7 +155,16 @@ class NetworkDialog(
             .setView(box)
             .setPositiveButton("Connect") { _, _ ->
                 val protocol = protocols[typeSpinner.selectedItemPosition]
-                val host = hostField.text.toString().trim()
+                val host = hostField.text.toString().trim().ifEmpty {
+                    when (protocol) {
+                        NetworkConnectionFactory.Protocol.MEDIAFIRE -> "mediafire.com"
+                        NetworkConnectionFactory.Protocol.TERABOX -> "terabox.com"
+                        NetworkConnectionFactory.Protocol.GOOGLE_DRIVE -> "drive.google.com"
+                        NetworkConnectionFactory.Protocol.DROPBOX -> "dropbox.com"
+                        NetworkConnectionFactory.Protocol.ONEDRIVE -> "onedrive.live.com"
+                        else -> ""
+                    }
+                }
                 val port = portField.text.toString().trim().toIntOrNull() ?: protocol.defaultPort
                 if (host.isEmpty()) {
                     Toast.makeText(context, "Host required", Toast.LENGTH_SHORT).show()

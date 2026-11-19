@@ -2,6 +2,13 @@ package com.trove.core.net
 
 import com.trove.core.fs.FileItem
 import com.trove.core.fs.Result
+import com.trove.core.net.cloud.CloudProviders
+import com.trove.core.net.cloud.DropboxFileItem
+import com.trove.core.net.cloud.GoogleDriveFileItem
+import com.trove.core.net.cloud.MediaFireFileItem
+import com.trove.core.net.cloud.OAuthTokenEngine
+import com.trove.core.net.cloud.OneDriveFileItem
+import com.trove.core.net.cloud.TeraBoxFileItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.commons.net.ftp.FTPClient
@@ -20,7 +27,12 @@ object NetworkConnectionFactory {
         FTP(21, "FTP"),
         SFTP(22, "SFTP"),
         SMB(445, "SMB"),
-        WEBDAV(80, "WebDAV")
+        WEBDAV(80, "WebDAV"),
+        MEDIAFIRE(443, "MediaFire"),
+        TERABOX(443, "TeraBox (ndus)"),
+        GOOGLE_DRIVE(443, "Google Drive"),
+        DROPBOX(443, "Dropbox"),
+        ONEDRIVE(443, "OneDrive")
     }
 
     data class ConnectionSpec(
@@ -40,6 +52,20 @@ object NetworkConnectionFactory {
                 Protocol.SFTP -> connectSftp(spec)
                 Protocol.SMB -> connectSmb(spec)
                 Protocol.WEBDAV -> connectWebDav(spec)
+                Protocol.MEDIAFIRE -> MediaFireFileItem.authenticate(spec.user, spec.password)
+                Protocol.TERABOX -> Result.Success(TeraBoxFileItem.root(spec.password.ifEmpty { spec.user }))
+                Protocol.GOOGLE_DRIVE -> {
+                    val engine = OAuthTokenEngine(CloudProviders.googleDrive(spec.user))
+                    Result.Success(GoogleDriveFileItem.root(engine))
+                }
+                Protocol.DROPBOX -> {
+                    val engine = OAuthTokenEngine(CloudProviders.dropbox(spec.user))
+                    Result.Success(DropboxFileItem.root(engine))
+                }
+                Protocol.ONEDRIVE -> {
+                    val engine = OAuthTokenEngine(CloudProviders.oneDrive(spec.user))
+                    Result.Success(OneDriveFileItem.root(engine))
+                }
             }
         } catch (e: Exception) {
             Result.Failure(e)
