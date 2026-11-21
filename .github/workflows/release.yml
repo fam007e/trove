@@ -38,8 +38,9 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # No android-actions/setup-android: sdkmanager 16.0 removed the legacy
+      # 'tools' package it tries to install, and ubuntu-latest already ships a
+      # complete ANDROID_HOME (same setup ci.yml relies on).
 
       - name: Build unsigned release APK (version stamped from tag)
         run: >
