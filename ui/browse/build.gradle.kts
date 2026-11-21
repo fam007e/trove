@@ -35,6 +35,7 @@ dependencies {
     implementation(project(":core:fs"))
     implementation(project(":core:net"))
     implementation(project(":feature:archive"))
+    implementation(project(":feature:cleaner"))
     implementation(project(":feature:image"))
     implementation(project(":feature:pdf"))
     implementation(project(":feature:tagger"))

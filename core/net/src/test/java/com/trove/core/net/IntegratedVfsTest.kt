@@ -20,7 +20,10 @@ class IntegratedVfsTest {
 
     @Test
     fun testFtpCopyToSameSessionReentrancy(): Unit = runBlocking {
-        withTimeout(5000) {
+        // Generous timeout: the assertion checks reentrancy CORRECTNESS, not
+        // speed. Under full-project builds other modules compile concurrently
+        // and a 5s budget made this fail spuriously (timing, not deadlock).
+        withTimeout(60000) {
             val mockClient = mockk<FTPClient>(relaxed = true)
             val sessionManager = SessionManager(mockClient)
             

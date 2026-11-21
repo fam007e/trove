@@ -54,11 +54,24 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Install diffoscope, fdroidserver & tools
-        run: sudo apt-get update && sudo apt-get install -y diffoscope unzip fdroidserver
+      - name: Install diffoscope & tools
+        run: sudo apt-get update && sudo apt-get install -y diffoscope unzip
 
-      - name: Run F-Droid Metadata Lint
-        run: fdroid lint com.trove.fdroid
+      # fdroidserver's `fdroid lint` only runs inside an fdroiddata checkout
+      # (needs config.py); validate the in-repo metadata structurally instead.
+      - name: Validate F-Droid metadata structure
+        run: |
+          python3 - <<'PY'
+          import sys, yaml
+          path = "metadata/com.trove.fdroid.yml"
+          with open(path) as f:
+              meta = yaml.safe_load(f)
+          required = ["Categories", "License", "Summary", "Description", "RepoType", "Repo"]
+          missing = [k for k in required if not meta.get(k)]
+          if missing:
+              sys.exit(f"ERROR: {path} missing required fields: {missing}")
+          print(f"OK: {path} valid — License={meta['License']}, Repo={meta['Repo']}")
+          PY
 
       - name: Execute Dual-Pass Reproducibility Verification
         run: bash scripts/ci_reproducibility_test.sh
@@ -102,8 +115,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Assemble Release APK
-        run: ./gradlew assembleRelease --no-build-cache
+      - name: Assemble Release APK (snapshot-stamped, unsigned)
+        # Snapshot builds get traceable dev versions: versionCode = workflow
+        # run number, versionName carries the short commit. Release tags use
+        # the tag-stamped pipeline in release.yml instead.
+        run: >
+          ./gradlew assembleRelease --no-build-cache
+          -Ptrove.versionName="0.0.0-${GITHUB_SHA::7}"
+          -Ptrove.versionCode="${{ github.run_number }}"
+        env:
+          GITHUB_SHA: ${{ github.sha }}
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4

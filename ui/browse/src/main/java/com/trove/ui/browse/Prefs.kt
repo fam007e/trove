@@ -25,6 +25,15 @@ object Prefs {
         get() = prefs.getBoolean("show_hidden", false)
         set(v) = prefs.edit().putBoolean("show_hidden", v).apply()
 
+    var sortAscending: Boolean
+        get() = prefs.getBoolean("sort_asc", true)
+        set(v) = prefs.edit().putBoolean("sort_asc", v).apply()
+
+    /** "list" or "grid" */
+    var viewType: String
+        get() = prefs.getString("view_type", "list") ?: "list"
+        set(v) = prefs.edit().putString("view_type", v).apply()
+
     var dualPane: Boolean
         get() = prefs.getBoolean("dual_pane", false)
         set(v) = prefs.edit().putBoolean("dual_pane", v).apply()

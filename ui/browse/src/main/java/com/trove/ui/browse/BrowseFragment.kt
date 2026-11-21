@@ -3,6 +3,7 @@ package com.trove.ui.browse
 import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -10,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
@@ -55,6 +57,7 @@ class BrowseFragment : Fragment() {
     private lateinit var breadcrumbBar: TroveBreadcrumbBar
     private lateinit var selectionBar: LinearLayout
     private lateinit var selectionCountView: TextView
+    private lateinit var bottomBar: LinearLayout
     private lateinit var filterBar: LinearLayout
     private lateinit var filterLabel: TextView
     private var currentDirectory: FileItem? = null
@@ -76,6 +79,9 @@ class BrowseFragment : Fragment() {
         var showHidden: Boolean
             get() = Prefs.showHidden
             set(v) { Prefs.showHidden = v }
+        var sortAscending: Boolean
+            get() = Prefs.sortAscending
+            set(v) { Prefs.sortAscending = v }
 
         fun newInstance(root: FileItem, paneIndex: Int = 0): BrowseFragment {
             val fragment = BrowseFragment()
@@ -92,17 +98,79 @@ class BrowseFragment : Fragment() {
     ): View {
         val context = requireContext()
         Prefs.init(context)
+        ThumbnailCache.initContext(context)
         val rootLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(android.graphics.Color.parseColor("#2E3440"))
         }
 
+        // Breadcrumb row: ◁ go-up (MiX's breadcrumb_back) + breadcrumb + disk usage
+        val breadcrumbRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
         breadcrumbBar = TroveBreadcrumbBar(context).apply {
             setOnSegmentClickListener { index ->
                 navigateToIndex(index)
             }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        rootLayout.addView(breadcrumbBar)
+        breadcrumbRow.addView(breadcrumbBar)
+        // Disk-usage chip: a tiny rounded usage bar + rounded percentage.
+        // The old text form ("13.36 GiB / 52.55 GiB  25%") was long, noisy
+        // and fought the breadcrumb for width; the full figures moved to a
+        // tap toast. Pill background keeps it reading as its own element.
+        diskUsageChip = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.parseColor("#3B4252"))
+                cornerRadius = 999f
+            }
+            setPadding(14, 7, 14, 7)
+            visibility = View.GONE
+        }
+        val usageTrack = android.graphics.drawable.GradientDrawable().apply {
+            setColor(android.graphics.Color.parseColor("#4C566A"))
+            cornerRadius = 99f
+        }
+        val usageFill = android.graphics.drawable.GradientDrawable().apply {
+            setColor(android.graphics.Color.parseColor("#88C0D0"))
+            cornerRadius = 99f
+        }
+        val usageLayers = android.graphics.drawable.LayerDrawable(
+            arrayOf(usageTrack, usageFill)
+        ).apply {
+            setId(0, android.R.id.background)
+            setId(1, android.R.id.progress)
+            setLayerInset(1, 1, 1, 1, 1)
+        }
+        diskUsageBar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progressDrawable = usageLayers
+            layoutParams = LinearLayout.LayoutParams(
+                (52 * resources.displayMetrics.density).toInt(),
+                (7 * resources.displayMetrics.density).toInt()
+            )
+        }
+        diskUsageChip.addView(diskUsageBar)
+        diskUsagePct = TextView(context).apply {
+            setTextColor(android.graphics.Color.parseColor("#ECEFF4"))
+            textSize = 11f
+            includeFontPadding = false
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = (7 * resources.displayMetrics.density).toInt() }
+        }
+        diskUsageChip.addView(diskUsagePct)
+        diskUsageChip.setOnClickListener {
+            diskUsageDetail?.let { detail ->
+                Toast.makeText(context, detail, Toast.LENGTH_SHORT).show()
+            }
+        }
+        breadcrumbRow.addView(diskUsageChip)
+        rootLayout.addView(breadcrumbRow)
 
         // Search filter chip (visible only while a filter is active)
         filterBar = LinearLayout(context).apply {
@@ -117,10 +185,14 @@ class BrowseFragment : Fragment() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         filterBar.addView(filterLabel)
-        filterBar.addView(Button(context).apply {
+        // TextView, not Button: the Button style's 88dp minimum width bloats
+        // a small clear glyph into a chunky slot.
+        filterBar.addView(TextView(context).apply {
             text = "✕"
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setTextColor(android.graphics.Color.parseColor("#BF616A"))
+            textSize = 14f
+            setPadding(24, 8, 24, 8)
             setOnClickListener { setSearchFilter(null) }
         }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -149,21 +221,25 @@ class BrowseFragment : Fragment() {
             setMinimumWidth(0)
             minimumWidth = 0
             setPadding(20, 0, 20, 0)
-            textSize = 12f
+            textSize = 13f
             setOnClickListener { onClick() }
         }
         // Horizontal scroll keeps every action reachable on narrow screens
         val actions = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
         }
-        actions.addView(barButton("✎") { renameSelection() })
-        actions.addView(barButton("⚙") { propertiesSelection() })
-        actions.addView(barButton("⧉") { copyOrMoveSelection(move = false) })
-        actions.addView(barButton("⇄") { copyOrMoveSelection(move = true) })
-        actions.addView(barButton("⇪") { shareSelection() })
-        actions.addView(barButton("🗜") { archiveSelection() })
-        actions.addView(barButton("🗑") { deleteSelection() })
-        actions.addView(barButton("✕") { adapter.clearSelection() })
+        // Text labels (not glyphs): discoverability + accessibility
+        actions.addView(barButton("Delete") { deleteSelection() })
+        actions.addView(barButton("Copy") { copyOrMoveSelection(move = false) })
+        actions.addView(barButton("Move") { copyOrMoveSelection(move = true) })
+        actions.addView(barButton("Extract") { extractSelection() })
+        actions.addView(barButton("Archive") { archiveSelection() })
+        actions.addView(barButton("Share") { shareSelection() })
+        actions.addView(barButton("Rename") { renameSelection() })
+        actions.addView(barButton("Info") { propertiesSelection() })
+        actions.addView(barButton("Select all") { adapter.selectAll() })
+        actions.addView(barButton("Invert") { adapter.invertSelection() })
+        actions.addView(barButton("Clear") { adapter.clearSelection() })
         selectionBar.addView(android.widget.HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             addView(actions)
@@ -199,6 +275,8 @@ class BrowseFragment : Fragment() {
                     adapter.toggleSelection(item)
                 } else if (item.isDirectory) {
                     loadDirectory(item)
+                } else if (item.name.substringAfterLast('.', "").lowercase() == "apk") {
+                    openApkDialog(item)
                 } else if (ArchiveType.isArchive(item)) {
                     openArchive(item)
                 } else if (ImageDecoderUtils.isImage(item.name)) {
@@ -222,12 +300,142 @@ class BrowseFragment : Fragment() {
         recyclerView.adapter = adapter
         rootLayout.addView(recyclerView)
 
+        // MiX-style bottom action bar: Search · View · Add · Refresh · Sort · Select all
+        bottomBar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
+        }
+        fun barAction(label: String, onClick: (View) -> Unit): Button = Button(context).apply {
+            text = label
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setTextColor(android.graphics.Color.parseColor("#ECEFF4"))
+            setMinimumWidth(0)
+            minimumWidth = 0
+            setPadding(0, 12, 0, 12)
+            textSize = 15f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+            setOnClickListener { onClick(this) }
+        }
+        bottomBar.addView(barAction("🔍") { showSearchDialog() })
+        bottomBar.addView(barAction(if (Prefs.viewType == "grid") "▤" else "▦") { toggleViewType() })
+        bottomBar.addView(barAction("＋") { showCreateMenu(it) })
+        bottomBar.addView(barAction("⟳") { reload() })
+        bottomBar.addView(barAction(if (Prefs.sortAscending) "AZ" else "ZA") { showSortMenu(it) })
+        bottomBar.addView(barAction("☑") { adapter.selectAll() })
+        rootLayout.addView(bottomBar)
+
         return rootLayout
+    }
+
+    private lateinit var diskUsageChip: LinearLayout
+    private lateinit var diskUsageBar: ProgressBar
+    private lateinit var diskUsagePct: TextView
+
+    /** Full figures for the chip's tap toast ("13.4 / 52.6 GiB · 39.2 free"). */
+    private var diskUsageDetail: String? = null
+
+    /** Disk usage for the current volume, compact chip in the breadcrumb row. */
+    private fun updateDiskUsage(directory: FileItem) {
+        if (directory !is LocalFileItem) {
+            diskUsageChip.visibility = View.GONE
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    // Some FUSE mounts report 0 space on deep paths; probe
+                    // upwards until a volume answers, mirroring MiX.
+                    var probe: java.io.File? = java.io.File(directory.path)
+                    var total = 0L
+                    var usable = 0L
+                    var hops = 0
+                    while (probe != null && hops < 6) {
+                        total = probe.totalSpace
+                        usable = probe.usableSpace
+                        if (total > 0) break
+                        probe = probe.parentFile
+                        hops++
+                    }
+                    if (total <= 0) return@withContext null
+                    val used = total - usable
+                    val usedPct = Math.round(used * 100.0 / total).toInt()
+                    Triple(usedPct, used, total)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (result != null) {
+                val (usedPct, used, total) = result
+                diskUsageBar.progress = usedPct.coerceIn(0, 100)
+                diskUsagePct.text = "$usedPct%"
+                diskUsageDetail = String.format(
+                    "%.1f / %.1f GiB used · %.1f GiB free",
+                    used / 1024.0 / 1024.0 / 1024.0,
+                    total / 1024.0 / 1024.0 / 1024.0,
+                    (total - used) / 1024.0 / 1024.0 / 1024.0
+                )
+                diskUsageChip.visibility = View.VISIBLE
+            } else {
+                diskUsageChip.visibility = View.GONE
+            }
+        }
+    }
+
+
+    /** Toggle list/grid rendering; persists via Prefs.viewType. */
+    private fun toggleViewType() {
+        Prefs.viewType = if (Prefs.viewType == "grid") "list" else "grid"
+        applyViewType()
+    }
+
+    private fun applyViewType() {
+        adapter.gridMode = Prefs.viewType == "grid"
+        recyclerView.layoutManager = if (Prefs.viewType == "grid") {
+            androidx.recyclerview.widget.GridLayoutManager(requireContext(), 3)
+        } else {
+            LinearLayoutManager(requireContext())
+        }
+        reload()
     }
 
     private fun updateSelectionBar(count: Int) {
         selectionBar.visibility = if (count > 0) View.VISIBLE else View.GONE
-        selectionCountView.text = if (count > 0) "$count selected" else ""
+        // Hide the bottom action bar (Search/Sort/…) while selecting — MiX does
+        // the same; having Search visible mid-selection is confusing.
+        bottomBar.visibility = if (count > 0) View.GONE else View.VISIBLE
+        if (count > 0) {
+            val totalBytes = selectedList().sumOf { it.size }
+            val formattedSize = android.text.format.Formatter.formatFileSize(context, totalBytes)
+            selectionCountView.text = "$count selected ($formattedSize)"
+        } else {
+            selectionCountView.text = ""
+        }
+    }
+
+    private fun showSelectByPatternDialog() {
+        val ctx = context ?: return
+        val input = android.widget.EditText(ctx).apply {
+            hint = "*.pdf, *.jpg, img_*"
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle("Select by pattern")
+            .setMessage("Enter wildcard pattern (* matches anything, ? matches one char):")
+            .setView(input)
+            .setPositiveButton("Select") { _, _ ->
+                val pattern = input.text.toString().trim()
+                if (pattern.isNotEmpty()) {
+                    val regexPattern = pattern
+                        .replace(".", "\\.")
+                        .replace("*", ".*")
+                        .replace("?", ".")
+                    val regex = Regex("^$regexPattern$", RegexOption.IGNORE_CASE)
+                    val count = adapter.selectMatching { regex.matches(it.name) }
+                    Toast.makeText(ctx, "Selected $count item(s)", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun setSearchFilter(query: String?) {
@@ -314,12 +522,19 @@ class BrowseFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        adapter.gridMode = Prefs.viewType == "grid"
+        recyclerView.layoutManager = if (Prefs.viewType == "grid") {
+            androidx.recyclerview.widget.GridLayoutManager(requireContext(), 3)
+        } else {
+            LinearLayoutManager(requireContext())
+        }
         rootDirectory?.let { loadDirectory(it) }
     }
 
     private fun loadDirectory(directory: FileItem) {
         currentDirectory = directory
         breadcrumbBar.setPath(directory.path)
+        updateDiskUsage(directory)
         (activity as? OnDirectoryChangedListener)?.onDirectoryChanged(paneIndex, directory)
         (activity as? DualPaneHost)?.notifyPaneActive(paneIndex)
         
@@ -360,22 +575,21 @@ class BrowseFragment : Fragment() {
         recyclerView.scheduleLayoutAnimation()
     }
 
-    /** Dirs first, then the chosen key; hidden files filtered by the toggle. */
+    /** Dirs first, then the chosen key + direction; hidden files filtered by the toggle. */
     private fun applyListSettings(list: List<FileItem>): List<FileItem> {
         var visible = if (Prefs.showHidden) list else list.filter { !it.name.startsWith(".") }
         searchFilter?.let { q ->
             visible = visible.filter { it.name.contains(q, ignoreCase = true) }
         }
         val (dirs, files) = visible.partition { it.isDirectory }
-        val sorted = when (sortBy) {
-            "size" -> files.sortedByDescending { it.size }
-            "date" -> files.sortedByDescending { it.lastModified }
-            else -> files.sortedBy { it.name.lowercase() }
+        val cmp: Comparator<FileItem> = when (sortBy) {
+            "size" -> compareBy { it.size }
+            "date" -> compareBy { it.lastModified }
+            "type" -> compareBy { it.name.substringAfterLast('.', "").lowercase() }
+            else -> compareBy { it.name.lowercase() }
         }
-        val sortedDirs = when (sortBy) {
-            "date" -> dirs.sortedByDescending { it.lastModified }
-            else -> dirs.sortedBy { it.name.lowercase() }
-        }
+        val sorted = if (Prefs.sortAscending) files.sortedWith(cmp) else files.sortedWith(cmp.reversed())
+        val sortedDirs = if (Prefs.sortAscending) dirs.sortedWith(cmp) else dirs.sortedWith(cmp.reversed())
         return sortedDirs + sorted
     }
 
@@ -434,6 +648,50 @@ class BrowseFragment : Fragment() {
                 viewLifecycleOwner.lifecycleScope.launch {
                     when (val res = dir.createDirectory(name)) {
                         is Result.Success -> reload()
+                        is Result.Failure -> Toast.makeText(
+                            ctx, "Failed: ${res.exception.message}", Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** MiX's ＋ menu: create a folder or an empty file in the current directory. */
+    private fun showCreateMenu(anchor: View) {
+        val popup = androidx.appcompat.widget.PopupMenu(requireContext(), anchor)
+        popup.menu.add(0, 1, 0, "New folder")
+        popup.menu.add(0, 2, 0, "New file")
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                1 -> showNewFolderDialog()
+                2 -> showNewFileDialog()
+            }
+            true
+        }
+        popup.show()
+    }
+
+    private fun showNewFileDialog() {
+        val ctx = context ?: return
+        val input = android.widget.EditText(ctx).apply {
+            setSingleLine(true)
+            hint = "File name (e.g. notes.txt)"
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle("New file")
+            .setView(input)
+            .setPositiveButton("Create") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isEmpty()) return@setPositiveButton
+                val dir = currentDirectory ?: return@setPositiveButton
+                viewLifecycleOwner.lifecycleScope.launch {
+                    when (val res = dir.createFile(name)) {
+                        is Result.Success -> {
+                            Toast.makeText(ctx, "Created $name", Toast.LENGTH_SHORT).show()
+                            reload()
+                        }
                         is Result.Failure -> Toast.makeText(
                             ctx, "Failed: ${res.exception.message}", Toast.LENGTH_LONG
                         ).show()
@@ -568,34 +826,54 @@ class BrowseFragment : Fragment() {
             AlertDialog.Builder(ctx)
                 .setTitle("Delete ${items.size} item(s) permanently?")
                 .setPositiveButton("Delete forever") { _, _ ->
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        var failed = 0
-                        withContext(Dispatchers.IO) {
-                            items.forEach { if (it.delete() is Result.Failure) failed++ }
-                        }
-                        adapter.clearSelection()
-                        reload()
-                        if (failed > 0) {
-                            Toast.makeText(ctx, "$failed could not be deleted", Toast.LENGTH_LONG).show()
-                        }
-                    }
+                    performPermanentDelete(items)
                 }
                 .setNegativeButton("Cancel", null)
                 .show()
             return
         }
 
+        val preview = items.take(4).joinToString("\n") { it.name } +
+            if (items.size > 4) "\n… (+${items.size - 4} more)" else ""
+
         AlertDialog.Builder(ctx)
-            .setTitle("Delete ${items.size} item(s)?")
-            .setMessage(items.take(5).joinToString("\n") { it.name } + if (items.size > 5) "\n…" else "")
-            .setPositiveButton("Delete") { _, _ ->
+            .setTitle("Delete ${items.size} item(s)")
+            .setMessage(preview)
+            .setPositiveButton("Recycle Bin") { _, _ ->
                 moveToTrash(items) {
                     adapter.clearSelection()
                     reload()
                 }
             }
+            .setNeutralButton("Delete Permanently") { _, _ ->
+                AlertDialog.Builder(ctx)
+                    .setTitle("Permanent Deletion")
+                    .setMessage("Permanently delete these ${items.size} item(s)? This cannot be undone.")
+                    .setPositiveButton("Delete Forever") { _, _ ->
+                        performPermanentDelete(items)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun performPermanentDelete(items: List<FileItem>) {
+        val ctx = context ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            var failed = 0
+            withContext(Dispatchers.IO) {
+                items.forEach { if (it.delete() is Result.Failure) failed++ }
+            }
+            adapter.clearSelection()
+            reload()
+            if (failed > 0) {
+                Toast.makeText(ctx, "$failed could not be deleted", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(ctx, "Deleted ${items.size} item(s) permanently", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun copyOrMoveSelection(move: Boolean) {
@@ -1008,19 +1286,164 @@ class BrowseFragment : Fragment() {
         }
     }
 
+    /**
+     * Opens the current directory in Termux via the official RUN_COMMAND API
+     * (Termux's RunCommandService): workdir = this folder, a login bash
+     * session is opened in the terminal.
+     *
+     * Two gates, both needed:
+     * 1. com.termux.permission.RUN_COMMAND is a runtime ("dangerous")
+     *    permission — declaring it in the manifest is NOT enough; startService
+     *    throws SecurityException without the grant (that was the "Termux
+     *    refused the request" report).
+     * 2. Termux-side policy: allow-external-apps=true in
+     *    ~/.termux/termux.properties. Termux 0.119 has NO Settings toggle for
+     *    it — the property file is the only mechanism.
+     */
+    private var pendingTerminalDir: String? = null
+
+    private val runCommandPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            startTermuxSession()
+        } else {
+            AlertDialog.Builder(context)
+                .setTitle("Termux Run command permission denied")
+                .setMessage(
+                    "Trove needs Termux's \"Run commands\" permission to open " +
+                        "folders in Termux. Grant it under Android Settings → Apps → " +
+                        "Trove → Permissions, then try again."
+                )
+                .setPositiveButton("OK", null)
+                .show()
+        }
+    }
+
     fun openInTerminal() {
         val ctx = context ?: return
         val dir = currentDirectory?.path ?: return
-        val termuxIntent = Intent().apply {
-            setClassName("com.termux", "com.termux.app.TermuxActivity")
-            action = "com.termux.app.OPEN_NEW_INSTANCE"
-            data = android.net.Uri.parse(dir)
+
+        val installed = try {
+            ctx.packageManager.getPackageInfo("com.termux", 0)
+            true
+        } catch (_: Exception) {
+            false
+        }
+        if (!installed) {
+            AlertDialog.Builder(ctx)
+                .setTitle("Termux not installed")
+                .setMessage("Install Termux (F-Droid build recommended) to open folders in a real terminal.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        pendingTerminalDir = dir
+        runCommandPermissionLauncher.launch("com.termux.permission.RUN_COMMAND")
+    }
+
+    private fun startTermuxSession() {
+        val ctx = context ?: return
+        val dir = pendingTerminalDir ?: return
+        val runCommand = Intent().apply {
+            setClassName("com.termux", "com.termux.app.RunCommandService")
+            action = "com.termux.RUN_COMMAND"
+            putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
+            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("--login"))
+            putExtra("com.termux.RUN_COMMAND_WORKDIR", dir)
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
         }
         try {
-            ctx.startActivity(termuxIntent)
+            ctx.startService(runCommand)
+            Toast.makeText(ctx, "Termux opened at $dir", Toast.LENGTH_SHORT).show()
         } catch (_: Exception) {
-            Toast.makeText(ctx, "Termux not installed — install it for terminal access", Toast.LENGTH_LONG).show()
+            AlertDialog.Builder(ctx)
+                .setTitle("Termux refused the request")
+                .setMessage(
+                    "Termux's RunCommandService rejected the start. Check both gates:\n\n" +
+                        "1. Permission: grant Termux's \"Run commands\" to Trove " +
+                        "(Android Settings → Apps → Trove → Permissions), or just retry.\n\n" +
+                        "2. Termux policy: run this inside Termux, then force-stop Termux once:\n" +
+                        "echo allow-external-apps=true >> ~/.termux/termux.properties\n\n" +
+                        "(Termux 0.119 has no Settings toggle for this — the property file is the only switch.)"
+                )
+                .setPositiveButton("OK", null)
+                .show()
         }
+    }
+
+    /** MiX-style sort menu: key + direction as separate entries. */
+    fun showSortMenu(anchor: View) {
+        val popup = androidx.appcompat.widget.PopupMenu(requireContext(), anchor)
+        val entries = listOf(
+            "Name (A - Z)" to ("name" to true),
+            "Name (Z - A)" to ("name" to false),
+            "Size (Smaller)" to ("size" to true),
+            "Size (Larger)" to ("size" to false),
+            "Date (Older)" to ("date" to true),
+            "Date (Newer)" to ("date" to false),
+            "Type (Ascending)" to ("type" to true),
+            "Type (Descending)" to ("type" to false)
+        )
+        entries.forEachIndexed { i, (label, spec) ->
+            val mi = popup.menu.add(0, i, 0, label)
+            mi.isChecked = Prefs.sortBy == spec.first && Prefs.sortAscending == spec.second
+        }
+        popup.menu.setGroupCheckable(0, true, true)
+        popup.setOnMenuItemClickListener { mi ->
+            val spec = entries[mi.itemId].second
+            Prefs.sortBy = spec.first
+            Prefs.sortAscending = spec.second
+            reload()
+            true
+        }
+        popup.show()
+    }
+
+    /** APK tap: offer install (via system installer through FileProvider) or properties. */
+    private fun openApkDialog(item: FileItem) {
+        val ctx = context ?: return
+        AlertDialog.Builder(ctx)
+            .setTitle(item.name)
+            .setMessage("Install this APK with the system installer?")
+            .setPositiveButton("Install") { _, _ -> openWithExternalApp(item) }
+            .setNeutralButton("Properties") { _, _ -> showFileProperties(item) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Selection action: extract selected archive(s) to a chosen folder. */
+    private fun extractSelection() {
+        val archives = selectedList().filter { ArchiveType.isArchive(it) }
+        if (archives.isEmpty()) {
+            Toast.makeText(context, "Select archive file(s) first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val ctx = context ?: return
+        DestinationPickerDialog(ctx, viewLifecycleOwner.lifecycleScope) { destDir ->
+            viewLifecycleOwner.lifecycleScope.launch {
+                var ok = 0
+                var failed = 0
+                archives.forEach { archive ->
+                    when (val opened = ArchiveFileItem.open(archive)) {
+                        is Result.Success -> {
+                            when (val res = com.trove.feature.archive.ArchiveExtractor.extractAll(opened.value, destDir)) {
+                                is Result.Success -> ok++
+                                is Result.Failure -> failed++
+                            }
+                        }
+                        is Result.Failure -> failed++
+                    }
+                }
+                adapter.clearSelection()
+                Toast.makeText(
+                    ctx,
+                    "Extracted $ok archive(s) to ${destDir.path}" + if (failed > 0) " · $failed failed" else "",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }.show()
     }
 
     private fun mimeFor(item: FileItem): String {
@@ -1111,6 +1534,11 @@ class BrowseFragment : Fragment() {
         val ctx = context ?: return
         val sb = StringBuilder()
 
+        // File identity first: MiX's Properties shows where the file lives,
+        // and metadata alone gives no hint of the location.
+        sb.appendLine("Location: ${item.path}")
+        sb.appendLine("Size: ${android.text.format.Formatter.formatFileSize(ctx, item.size)}")
+        sb.appendLine()
         sb.appendLine("— ${bundle.source.name} Metadata —")
         sb.appendLine()
 
@@ -1214,17 +1642,31 @@ class BrowseFragment : Fragment() {
     }
 
     fun handleBackPressed(): Boolean {
+        // MiX behavior: back first clears an active selection
+        if (adapter.selectedItems.isNotEmpty()) {
+            adapter.clearSelection()
+            return true
+        }
         val root = rootDirectory ?: return false
         val current = currentDirectory ?: return false
-        
-        if (current.path == root.path) return false
+
+        // At (or above) the tab root: let the system back minimize the app.
+        // Never pop above the jail — that produced "Failed to list" toasts.
+        val rootNorm = root.path.trimEnd('/').ifEmpty { "/" }
+        val curNorm = current.path.trimEnd('/').ifEmpty { "/" }
+        if (curNorm == rootNorm || !curNorm.startsWith(rootNorm)) return false
 
         viewLifecycleOwner.lifecycleScope.launch {
             when (val result = current.getParent()) {
                 is Result.Success -> {
                     val parent = result.value
                     if (parent != null) {
-                        loadDirectory(parent)
+                        val parentNorm = parent.path.trimEnd('/').ifEmpty { "/" }
+                        if (parentNorm == rootNorm || parentNorm.startsWith("$rootNorm/")) {
+                            loadDirectory(parent)
+                        } else {
+                            loadDirectory(root)
+                        }
                     }
                 }
                 is Result.Failure -> {}

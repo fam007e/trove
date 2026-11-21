@@ -31,6 +31,49 @@ class SelectionTracker<T : Any> {
         }
     }
 
+    fun select(item: T): Boolean = selected.add(item)
+
+    fun deselect(item: T): Boolean = selected.remove(item)
+
+    /**
+     * Selects all [items]. Returns count of newly added items.
+     */
+    fun selectAll(items: Collection<T>): Int {
+        val initialSize = selected.size
+        selected.addAll(items)
+        return selected.size - initialSize
+    }
+
+    /**
+     * Inverts the selection against [allItems].
+     * Items that were selected become unselected; unselected items become selected.
+     */
+    fun invert(allItems: Collection<T>): Int {
+        val newSelection = LinkedHashSet<T>()
+        for (item in allItems) {
+            if (!selected.contains(item)) {
+                newSelection.add(item)
+            }
+        }
+        selected.clear()
+        selected.addAll(newSelection)
+        return selected.size
+    }
+
+    /**
+     * Selects all items from [items] that satisfy [predicate].
+     * Returns count of newly selected items.
+     */
+    fun selectMatching(items: Collection<T>, predicate: (T) -> Boolean): Int {
+        var added = 0
+        for (item in items) {
+            if (predicate(item) && selected.add(item)) {
+                added++
+            }
+        }
+        return added
+    }
+
     /**
      * Clears the selection. Returns the number of items that were selected,
      * so the caller can skip notifications when nothing changed.

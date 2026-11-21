@@ -13,20 +13,30 @@ Description: |-
   SMB, and WebDAV protocols. Built-in engines for archive browsing, image
   viewing, PDF rendering, media playback, and universal metadata tagging.
 
+  The built-in Cleaner finds and clears app caches, leftover data from
+  uninstalled apps, duplicate files, and junk matched by toggleable
+  filters. Public storage is cleaned with ordinary access; private app
+  data needs a superuser grant (Magisk or another su manager), and an
+  accessibility mode can drive the system "Clear cache" screen without
+  root. Nothing is deleted without a preview and an explicit
+  confirmation.
+
 RepoType: git
 Repo: https://github.com/trove-app/trove.git
 
 Builds:
-  - versionName: 1.0.0
-    versionCode: 100
-    commit: v1.0.0
-    subdir: app
-    gradle:
-      - assembleRelease
-    output: app/build/outputs/apk/release/app-release-unsigned.apk
-    prebuild: sed -i -e '/isMinifyEnabled/s/true/false/' app/build.gradle.kts || true
+  # First build entry is added when the first tag is packaged. The versioning
+  # scheme is tag-derived (vYYYY.MM.DD -> versionCode YYYYMMDD, monotonic,
+  # int32-safe until year 9999) — never cut two releases on the same day.
+  # Template for the first entry (tag vYYYY.MM.DD):
+  #   - versionName: YYYY.MM.DD
+  #     versionCode: YYYYMMDD
+  #     commit: vYYYY.MM.DD
+  #     subdir: app
+  #     gradle:
+  #       - assembleRelease
+  #     output: app/build/outputs/apk/release/app-release-unsigned.apk
+  #     prebuild: sed -i -e '/isMinifyEnabled/s/true/false/' app/build.gradle.kts || true
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 1.0.0
-CurrentVersionCode: 100

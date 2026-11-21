@@ -26,10 +26,13 @@ android {
         // versionCode = YYYYMMDD digits (e.g. tag v2026.11.18 -> 20261118):
         // monotonic for F-Droid/Play, fits int32 until year 9999. Two releases
         // on the same calendar day would collide — don't cut two a day.
-        // Local builds without the properties fall back to deterministic
-        // dev defaults so the build stays reproducible.
+        // Builds WITHOUT the properties (unit tests, CI audits, repro scripts,
+        // ad-hoc dev builds) fall back to deterministic dev defaults —
+        // versionCode must still be a positive int or AGP refuses to
+        // configure. Dev builds are versionCode 1, so they never shadow a
+        // real release install; pass the properties for device installs.
         versionName = providers.gradleProperty("trove.versionName").getOrElse("0.0.0-dev")
-        versionCode = providers.gradleProperty("trove.versionCode").getOrElse("0").toInt()
+        versionCode = providers.gradleProperty("trove.versionCode").getOrElse("1").toInt()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -116,6 +119,7 @@ dependencies {
     implementation(project(":server:webdav"))
     implementation(project(":server:sftp"))
     implementation(project(":feature:archive"))
+    implementation(project(":feature:cleaner"))
     implementation(project(":feature:image"))
     implementation(project(":feature:pdf"))
     implementation(project(":feature:tagger"))

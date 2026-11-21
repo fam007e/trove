@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trove_automation_description">Lets Trove clear other apps\' caches without root by driving the "Clear cache" button in the system app-details screen. Trove only clicks buttons inside Android Settings while a clean is running.</string>
+</resources>

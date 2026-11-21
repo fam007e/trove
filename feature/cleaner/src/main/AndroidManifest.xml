@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The Cleaner enumerates installed packages (AppCleaner / Corpse Finder).
+         On API 30+ package visibility filters this to nothing unless the
+         blanket query permission is declared. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <application>
+        <activity
+            android:name="com.trove.feature.cleaner.TroveCleanerActivity"
+            android:exported="false"
+            android:theme="@style/TroveTheme" />
+
+        <!-- Accessibility automation: drives the system Settings "Clear cache"
+             button on app detail screens for AppCleaner without root
+             (SD-Maid-style automation, implemented from behavior). -->
+        <service
+            android:name="com.trove.feature.cleaner.appcleaner.automation.TroveAutomationService"
+            android:exported="false"
+            android:label="Trove App Cleaner automation"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/trove_automation_config" />
+        </service>
+    </application>
+
+</manifest>

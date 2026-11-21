@@ -8,10 +8,12 @@ Trove is licensed under the **Apache License, Version 2.0**.
 
 | Library | Version | License | Upstream Repository / Source |
 |---|---|---|---|
-| **AndroidX Suite** | Pinned (1.13.1 / 1.7.0 / 2.9.0) | Apache-2.0 | [android/platform/frameworks/support](https://github.com/androidx/androidx) |
+| **AndroidX Suite** | Pinned (core 1.13.1, appcompat 1.7.0, work 2.9.0, fragment, recyclerview, viewpager2, lifecycle, documentfile, biometric, exifinterface) | Apache-2.0 | [android/platform/frameworks/support](https://github.com/androidx/androidx) |
 | **AndroidX Media3 (ExoPlayer)** | 1.5.1 | Apache-2.0 | [androidx/media](https://github.com/androidx/media) |
 | **Apache Commons Compress** | 1.26.2 | Apache-2.0 | [apache/commons-compress](https://github.com/apache/commons-compress) |
+| **Apache Commons Net** | 3.11.1 | Apache-2.0 | [apache/commons-net](https://github.com/apache/commons-net) |
 | **Apache MINA SSHD** | 2.12.1 | Apache-2.0 | [apache/mina-sshd](https://github.com/apache/mina-sshd) |
+| **Kotlin Coroutines** | 1.8.1 | Apache-2.0 | [Kotlin/kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines) |
 | **PDFBox-Android** | 2.0.27.0 | Apache-2.0 | [TomRoush/PdfBox-Android](https://github.com/TomRoush/PdfBox-Android) |
 | **Metadata Extractor** | 2.19.0 | Apache-2.0 | [drewnoakes/metadata-extractor](https://github.com/drewnoakes/metadata-extractor) |
 | **Zip4j** | 2.11.5 | Apache-2.0 | [srikanth-lingala/zip4j](https://github.com/srikanth-lingala/zip4j) |

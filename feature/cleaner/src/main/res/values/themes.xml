@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same Frost/Polar-Night accent pair as the other feature modules so
+         system dialogs tinted by this theme stay consistent. -->
+    <style name="TroveTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">#2E3440</item>
+        <item name="colorPrimaryDark">#2E3440</item>
+        <item name="colorAccent">#88C0D0</item>
+        <item name="android:colorAccent">#88C0D0</item>
+        <item name="android:statusBarColor">#2E3440</item>
+    </style>
+</resources>

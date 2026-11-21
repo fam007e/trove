@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive-icon foreground wrapper. The raw shield artwork fills ~85% of its
+  bitmap, but an adaptive icon is masked to a circle covering ~61% of the
+  108dp canvas on the launcher — and the Android 12+ splash screen masks even
+  tighter, which cropped the shield's top and sides. Insets shrink the art to
+  ~53% of the canvas so it sits fully inside both masks.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@mipmap/ic_launcher_foreground"
+    android:insetLeft="16%"
+    android:insetTop="16%"
+    android:insetRight="16%"
+    android:insetBottom="16%" />

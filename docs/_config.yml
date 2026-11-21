@@ -1,0 +1,6 @@
+title: Trove Documentation
+description: A clean-room, reproducible Android file manager
+theme: jekyll-theme-cayman
+# Relative links only — the site lives under a project subpath on Pages.
+permalink: pretty
+markdown: kramdown

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The system SAF picker ("USE THIS FOLDER") tints its buttons from the
+         CALLING app's theme colors. Without an accent set they render
+         grey-on-grey. Frost cyan on Polar Night keeps them readable. -->
+    <style name="TroveTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">#2E3440</item>
+        <item name="colorPrimaryDark">#2E3440</item>
+        <item name="colorAccent">#88C0D0</item>
+        <item name="android:colorAccent">#88C0D0</item>
+        <item name="android:statusBarColor">#2E3440</item>
+    </style>
+</resources>

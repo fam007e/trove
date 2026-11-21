@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.text.TextPaint
 import android.text.TextUtils
 import android.view.MotionEvent
@@ -105,6 +106,47 @@ class FileRowView(ctx: Context) : View(ctx) {
             }
         }
 
+    /** Child item count for folders (async); drawn right-aligned like MiX's "(N)". */
+    var itemCount: Int? = null
+        set(v) {
+            if (field != v) {
+                field = v
+                invalidate()
+            }
+        }
+
+    /** Dominant content category of a folder: "audio"/"video"/"image"/"doc"/"apk"/"archive". */
+    var contentBadge: String? = null
+        set(v) {
+            if (field != v) {
+                field = v
+                invalidate()
+            }
+        }
+
+    /** Grid rendering mode (icon above, name below) for the view-mode toggle. */
+    var gridMode: Boolean = false
+        set(v) {
+            if (field != v) {
+                field = v
+                requestLayout()
+                invalidate()
+            }
+        }
+
+    private val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#D08770") // Nord10 aurora orange
+        textSize = context.sp(12f)
+    }
+
+    /** Extension label paint for files without thumbnails (XML/HTML/PY/BAK…). */
+    private val extPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#ECEFF4")
+        textSize = context.sp(11f)
+        typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        textAlign = Paint.Align.CENTER
+    }
+
     private fun animateSelection(selected: Boolean) {
         selectionAnimator?.cancel()
         val target = if (selected) 1f else 0f
@@ -121,7 +163,7 @@ class FileRowView(ctx: Context) : View(ctx) {
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
-        val height = context.dpInt(58f) // Standard Nordic row height
+        val height = if (gridMode) context.dpInt(120f) else context.dpInt(58f)
         setMeasuredDimension(width, height)
     }
 
@@ -151,6 +193,10 @@ class FileRowView(ctx: Context) : View(ctx) {
 
     override fun onDraw(c: Canvas) {
         val fi = item ?: return
+        if (gridMode) {
+            drawGrid(c, fi)
+            return
+        }
 
         // Animated Selection highlight
         if (selectionFraction > 0.01f) {
@@ -185,6 +231,7 @@ class FileRowView(ctx: Context) : View(ctx) {
             c.restore()
         } else {
             c.drawRoundRect(iconBounds, context.dp(6f), context.dp(6f), iconPaint)
+            drawExtensionLabel(c, fi, iconBounds)
         }
 
         val textLeft = iconBounds.right + context.dp(16f)
@@ -203,6 +250,68 @@ class FileRowView(ctx: Context) : View(ctx) {
         val shownSize = displaySize ?: fi.size
         val meta = "${formatSize(shownSize)}  •  ${dateFormatter.format(Date(fi.lastModified))}"
         c.drawText(meta, textLeft, height / 2f + context.dp(17f), metaPaint)
+    }
+
+    /** Grid cell: icon tile centered top, name below, count/badge overlaid. */
+    private fun drawGrid(c: Canvas, fi: FileItem) {
+        // Selection highlight
+        if (selectionFraction > 0.01f) {
+            selectionBgPaint.alpha = (45 * selectionFraction).toInt()
+            selectionBounds.set(0f, 0f, width.toFloat(), height.toFloat())
+            c.drawRect(selectionBounds, selectionBgPaint)
+        }
+
+        val iconSize = context.dp(56f)
+        val top = context.dp(10f)
+        iconBounds.set((width - iconSize) / 2f, top, (width + iconSize) / 2f, top + iconSize)
+        val thumb = thumbnail
+        if (thumb != null && !thumb.isRecycled) {
+            val radius = context.dp(8f)
+            val path = android.graphics.Path().apply {
+                addRoundRect(iconBounds, radius, radius, android.graphics.Path.Direction.CW)
+            }
+            c.save()
+            c.clipPath(path)
+            drawBitmapCover(c, thumb, iconBounds)
+            c.restore()
+        } else {
+            c.drawRoundRect(iconBounds, context.dp(8f), context.dp(8f), iconPaint)
+            drawExtensionLabel(c, fi, iconBounds)
+        }
+        if (contentBadge != null) {
+            c.drawText(badgeGlyph(), iconBounds.right - context.dp(16f), iconBounds.bottom, badgePaint)
+        }
+
+        val nameY = iconBounds.bottom + context.dp(22f)
+        val ellipsizedName = TextUtils.ellipsize(fi.name, namePaint, width - context.dp(16f), TextUtils.TruncateAt.END)
+        c.drawText(
+            ellipsizedName.toString(),
+            width / 2f - namePaint.measureText(ellipsizedName.toString()) / 2f,
+            nameY,
+            namePaint
+        )
+        val meta = if (fi.isDirectory) "${itemCount ?: 0} items" else formatSize(fi.size)
+        val metaWidth = metaPaint.measureText(meta)
+        c.drawText(meta, width / 2f - metaWidth / 2f, nameY + context.dp(16f), metaPaint)
+    }
+
+    /** Uppercase extension label (max 5 chars) centered in the icon tile,
+     *  both axes: horizontal via Align.CENTER, vertical via font metrics. */
+    private fun drawExtensionLabel(c: Canvas, fi: FileItem, bounds: RectF) {
+        val ext = fi.name.substringAfterLast('.', "").uppercase()
+        if (ext.isEmpty() || ext.length > 5) return
+        val baseline = bounds.centerY() - (extPaint.ascent() + extPaint.descent()) / 2f
+        c.drawText(ext, bounds.centerX(), baseline, extPaint)
+    }
+
+    private fun badgeGlyph(): String = when (contentBadge) {
+        "audio" -> "\u266B"      // ♫
+        "video" -> "\u25B6"      // ▶
+        "image" -> "\u25A3"      // ▣
+        "doc" -> "\u2261"        // ≡
+        "apk" -> "\u25C7"        // ◇
+        "archive" -> "\u25A4"    // ▤
+        else -> ""
     }
 
     /** Center-crop (cover) draw of [bmp] into [bounds], preserving aspect. */

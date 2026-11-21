@@ -9,6 +9,9 @@ import org.junit.Test
  * Unit tests for the pure selection state behind [FileAdapter].
  * Encodes the semantics the adapter's notify* calls depend on:
  * - toggle() returns the resulting selected state
+ * - selectAll() selects all provided items
+ * - invert() correctly flips selection state
+ * - selectMatching() filters by predicate
  * - clear() returns the previous count so no-op clears skip notifications
  */
 class SelectionTrackerTest {
@@ -46,6 +49,44 @@ class SelectionTrackerTest {
     }
 
     @Test
+    fun `selectAll selects all items and returns delta`() {
+        val tracker = SelectionTracker<String>()
+        tracker.select("a")
+
+        val delta = tracker.selectAll(listOf("a", "b", "c"))
+        assertEquals(2, delta)
+        assertEquals(3, tracker.selectedItems.size)
+        assertTrue(tracker.contains("a"))
+        assertTrue(tracker.contains("b"))
+        assertTrue(tracker.contains("c"))
+    }
+
+    @Test
+    fun `invert selection flips selected and unselected items`() {
+        val tracker = SelectionTracker<String>()
+        val all = listOf("a", "b", "c", "d")
+        tracker.select("a")
+        tracker.select("c")
+
+        val newCount = tracker.invert(all)
+        assertEquals(2, newCount)
+        assertFalse(tracker.contains("a"))
+        assertTrue(tracker.contains("b"))
+        assertFalse(tracker.contains("c"))
+        assertTrue(tracker.contains("d"))
+    }
+
+    @Test
+    fun `selectMatching selects items satisfying predicate`() {
+        val tracker = SelectionTracker<String>()
+        val all = listOf("report.pdf", "image.png", "doc.pdf", "script.py")
+
+        val added = tracker.selectMatching(all) { it.endsWith(".pdf") }
+        assertEquals(2, added)
+        assertEquals(setOf("report.pdf", "doc.pdf"), tracker.selectedItems)
+    }
+
+    @Test
     fun `clear returns previous count and zero on repeat`() {
         val tracker = SelectionTracker<Int>()
         tracker.toggle(1)
@@ -73,7 +114,6 @@ class SelectionTrackerTest {
         try {
             @Suppress("UNCHECKED_CAST")
             (tracker.selectedItems as MutableSet<String>).add("b")
-            // If the cast worked and it mutated, that is a failure of encapsulation
             assertTrue("selectedItems must not be externally mutable", tracker.selectedItems.size == 1)
         } catch (_: UnsupportedOperationException) {
             // expected on a properly unmodifiable view

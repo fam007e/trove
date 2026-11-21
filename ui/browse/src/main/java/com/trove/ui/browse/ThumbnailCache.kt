@@ -28,13 +28,14 @@ object ThumbnailCache {
         cache.evictAll()
     }
 
-    suspend fun load(item: FileItem, isVideo: Boolean = false, isPdf: Boolean = false): Bitmap? =
+    suspend fun load(item: FileItem, isVideo: Boolean = false, isPdf: Boolean = false, isApk: Boolean = false): Bitmap? =
         withContext(Dispatchers.IO) {
             val k = key(item)
             cache.get(k)?.let { return@withContext it }
             try {
                 val bmp = when {
                     isPdf -> decodePdf(item)
+                    isApk -> decodeApkIcon(item)
                     isVideo -> decodeVideoFrame(item)
                     else -> decodeImage(item)
                 }
@@ -46,6 +47,41 @@ object ThumbnailCache {
         }
 
     private fun key(item: FileItem) = "${item.path}|${item.lastModified}"
+
+    /**
+     * APK files carry their launcher icon inside the archive. The standard
+     * trick: parse the archive with getPackageArchiveInfo, point the returned
+     * ApplicationInfo's sourceDir at the APK, and let PackageManager load the
+     * icon resource from it.
+     */
+    private fun decodeApkIcon(item: FileItem): Bitmap? {
+        val file = java.io.File(item.path)
+        if (!file.exists()) return null
+        val pm = appContext!!.packageManager
+        val pkg = pm.getPackageArchiveInfo(item.path, 0) ?: return null
+        val ai = pkg.applicationInfo ?: return null
+        ai.sourceDir = item.path
+        ai.publicSourceDir = item.path
+        val drawable = try {
+            pm.getApplicationIcon(ai)
+        } catch (_: Exception) {
+            return null
+        }
+        val size = TARGET_PX
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bmp)
+        drawable.setBounds(0, 0, size, size)
+        drawable.draw(canvas)
+        return bmp
+    }
+
+    /** Application context captured once from the first caller. */
+    @Volatile
+    private var appContext: android.content.Context? = null
+
+    fun initContext(context: android.content.Context) {
+        if (appContext == null) appContext = context.applicationContext
+    }
 
     /**
      * Renders page 1 of a PDF to a thumbnail via the platform PdfRenderer

@@ -19,7 +19,7 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Trove"
-        android:theme="@style/Theme.AppCompat.NoActionBar">
+        android:theme="@style/TroveTheme">
 
         <activity
             android:name="com.trove.ui.browse.BrowseActivity"
@@ -34,19 +34,19 @@
         <activity
             android:name="com.trove.feature.image.TroveImageViewerActivity"
             android:exported="false"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
+            android:theme="@style/TroveTheme" />
 
         <activity
             android:name="com.trove.feature.pdf.TrovePdfViewerActivity"
             android:exported="false"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
+            android:theme="@style/TroveTheme" />
 
         <activity
             android:name="com.trove.feature.media.TrovePlayerActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:exported="false"
             android:launchMode="singleTop"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
+            android:theme="@style/TroveTheme" />
 
         <service
             android:name="com.trove.feature.media.TrovePlayerService"

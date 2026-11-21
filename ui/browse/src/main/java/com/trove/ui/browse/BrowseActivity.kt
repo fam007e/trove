@@ -9,8 +9,11 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.IBinder
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ListView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -104,48 +107,52 @@ class BrowseActivity : AppCompatActivity(),
 
         val actionBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            // One uniform strip behind the whole row — per-item backgrounds
+            // left a visible seam under the flexible spacer.
+            setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+                (48 * resources.displayMetrics.density).toInt()
             )
 
-            val mountButton = Button(this@BrowseActivity).apply {
-                text = "+ SAF"
-                setTextColor(android.graphics.Color.parseColor("#88C0D0"))
-                setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
-                setOnClickListener { openDocumentTreeLauncher.launch(null) }
-            }
-            addView(mountButton)
-
-            val localButton = Button(this@BrowseActivity).apply {
-                text = "+ Storage"
-                setTextColor(android.graphics.Color.parseColor("#ECEFF4"))
-                setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
-                setOnClickListener {
-                    val root = Environment.getExternalStorageDirectory()
-                    addNewTab(dualPaneState.activePaneIndex, LocalFileItem(root))
+            // Text-hugging items with one uniform gap: weight-equal slots
+            // centered their labels, so the short "SAF" sat visibly farther
+            // from "Storage" than "Storage" sat from "Shizuku". TextViews
+            // instead of Buttons — the Button style forces an 88dp minimum
+            // width that setMinimumWidth(0) can't clear, which squeezed the
+            // overflow ⋮ off the right edge.
+            fun barItem(label: String, color: String, size: Float, onClick: (TextView) -> Unit): TextView =
+                TextView(this@BrowseActivity).apply {
+                    text = label
+                    setTextColor(android.graphics.Color.parseColor(color))
+                    minimumWidth = 0
+                    minimumHeight = 0
+                    setPadding(12, 0, 12, 0)
+                    includeFontPadding = false
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    textSize = size
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.MATCH_PARENT
+                    )
+                    setOnClickListener { onClick(this) }
                 }
-            }
-            addView(localButton)
 
-            val shizukuButton = Button(this@BrowseActivity).apply {
-                text = "+ Shizuku"
-                setTextColor(android.graphics.Color.parseColor("#81A1C1"))
-                setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
-                setOnClickListener {
-                    tryMountShizuku()
-                }
-            }
-            addView(shizukuButton)
+            addView(barItem("☰", "#88C0D0", 15f) { openDrawer() })
+            addView(barItem("SAF", "#88C0D0", 14f) { launchSafPicker() })
+            addView(barItem("Storage", "#ECEFF4", 14f) {
+                val root = Environment.getExternalStorageDirectory()
+                addNewTab(dualPaneState.activePaneIndex, LocalFileItem(root))
+            })
+            addView(barItem("Shizuku", "#81A1C1", 14f) { tryMountShizuku() })
+
+            // Flexible spacer keeps the overflow ⋮ pinned to the right edge
+            // and absorbs all remaining real estate, so nothing is pushed
+            // off-screen on narrow portrait displays.
+            addView(View(this@BrowseActivity), LinearLayout.LayoutParams(0, 1, 1f))
 
             // Overflow menu (sort / hidden files / new folder / servers / dual pane)
-            val menuButton = Button(this@BrowseActivity).apply {
-                text = "⋮"
-                setTextColor(android.graphics.Color.parseColor("#ECEFF4"))
-                setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
-                setOnClickListener { view -> showOverflowMenu(view) }
-            }
-            addView(menuButton)
+            addView(barItem("⋮", "#ECEFF4", 18f) { showOverflowMenu(it) })
         }
         rootLayout.addView(actionBar)
 
@@ -171,7 +178,7 @@ class BrowseActivity : AppCompatActivity(),
                 if (isLandscape) LinearLayout.LayoutParams.MATCH_PARENT else 0,
                 1.0f
             )
-            addView(tabBar0)
+            addView(wrapTabBarWithMenu(0, tabBar0))
             addView(viewPager0)
         }
         panesContainer.addView(pane0Container)
@@ -201,13 +208,93 @@ class BrowseActivity : AppCompatActivity(),
                 1.0f
             )
             visibility = if (dualPaneState.isDualPane) View.VISIBLE else View.GONE
-            addView(tabBar1)
+            addView(wrapTabBarWithMenu(1, tabBar1))
             addView(viewPager1)
         }
         panesContainer.addView(pane1Container)
 
         rootLayout.addView(panesContainer)
-        setContentView(rootLayout)
+
+        // Slide-in side drawer (MiX-style bookmarks panel): scrim + panel over content
+        drawerScrim = View(this).apply {
+            setBackgroundColor(android.graphics.Color.parseColor("#80000000"))
+            visibility = View.GONE
+            setOnClickListener { closeDrawer() }
+        }
+
+        val densityDp = resources.displayMetrics.density
+        drawerPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.parseColor("#2E3440"))
+            elevation = 16f * densityDp
+            visibility = View.GONE
+        }
+        drawerPanel.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(android.graphics.Color.parseColor("#3B4252"))
+            setPadding(12, 20, 12, 20)
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(TextView(this@BrowseActivity).apply {
+                text = "Bookmarks"
+                setTextColor(android.graphics.Color.parseColor("#ECEFF4"))
+                textSize = 15f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(TextView(this@BrowseActivity).apply {
+                text = "＋"
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setTextColor(android.graphics.Color.parseColor("#88C0D0"))
+                textSize = 15f
+                // Compact glyphs: two default-width Buttons would not even fit
+                // in the 45%-wide drawer panel.
+                setPadding(16, 8, 16, 8)
+                setOnClickListener {
+                    (supportFragmentManager.findFragmentByTag(activePaneFragmentTag()) as? BrowseFragment)?.addBookmark()
+                    populateDrawer()
+                }
+            })
+            addView(TextView(this@BrowseActivity).apply {
+                text = "✕"
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setTextColor(android.graphics.Color.parseColor("#BF616A"))
+                textSize = 15f
+                setPadding(16, 8, 16, 8)
+                setOnClickListener { closeDrawer() }
+            })
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+        drawerList = ListView(this).apply {
+            divider = null
+        }
+        drawerPanel.addView(drawerList, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+
+        // Slide-over container: content below, scrim + drawer above (z-order)
+        val drawerFrame = android.widget.FrameLayout(this)
+        drawerFrame.addView(rootLayout, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        drawerFrame.addView(drawerScrim, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        // The panel MUST carry its own width: a WRAP_CONTENT panel lets the
+        // MATCH_PARENT ListView inside expand it to the full screen, so the
+        // "45% drawer" ended up covering the whole browse area.
+        drawerFrame.addView(drawerPanel, android.widget.FrameLayout.LayoutParams(
+            drawerWidthPx(),
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.Gravity.START
+        ))
+        setContentView(drawerFrame)
+
+        drawerPanel.translationX = -drawerWidthPx().toFloat()
 
         onBackPressedDispatcher.addCallback(this) {
             val activeIndex = dualPaneState.activePaneIndex
@@ -225,9 +312,8 @@ class BrowseActivity : AppCompatActivity(),
             }
         }
 
-        // Initialize pane 0 with default internal storage tab
-        val root = Environment.getExternalStorageDirectory()
-        addNewTab(0, LocalFileItem(root))
+        // Initialize with the Home dashboard tab (MiX "Home" equivalent)
+        addNewTab(0, TroveHomeFragment.Companion.Marker, "Home")
 
         // Restore persisted SAF root if any
         getPreferences(MODE_PRIVATE).getString("saf_root", null)?.let {
@@ -240,6 +326,194 @@ class BrowseActivity : AppCompatActivity(),
         }
 
         ensureAllFilesAccess()
+    }
+
+    /** MiX btn_tab_menu equivalent, one per pane. */
+    private fun wrapTabBarWithMenu(paneIndex: Int, bar: TroveTabBar): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(android.graphics.Color.parseColor("#2E3440"))
+        }
+        // TextView, not Button: the Button style's 88dp minimum width ate a
+        // whole tab slot before the tabs even started. Fixed 26dp width with
+        // a centered glyph puts ▾ on the ☰'s column (☰ ≈ glyph + 12dp
+        // padding), one row below — the requested alignment.
+        row.addView(TextView(this).apply {
+            text = "▾"
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setTextColor(android.graphics.Color.parseColor("#88C0D0"))
+            minimumWidth = 0
+            minimumHeight = 0
+            includeFontPadding = false
+            gravity = android.view.Gravity.CENTER
+            textSize = 18f
+            setOnClickListener { showTabMenu(it, paneIndex) }
+        }, LinearLayout.LayoutParams(
+            (26 * resources.displayMetrics.density).toInt(),
+            LinearLayout.LayoutParams.MATCH_PARENT
+        ))
+        bar.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+        row.addView(bar)
+        row.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            (44 * resources.displayMetrics.density).toInt()
+        )
+        return row
+    }
+
+    private fun paneParts(paneIndex: Int): Triple<MutableList<FileItem>, TroveTabBar, ViewPager2> =
+        if (paneIndex == 0) Triple(pane0Tabs, tabBar0, viewPager0)
+        else Triple(pane1Tabs, tabBar1, viewPager1)
+
+    private lateinit var drawerScrim: View
+    private lateinit var drawerPanel: LinearLayout
+    private lateinit var drawerList: ListView
+    private var drawerOpen = false
+
+    private fun activePaneFragmentTag(): String {
+        val activeIndex = dualPaneState.activePaneIndex
+        val activePager = if (activeIndex == 0) viewPager0 else viewPager1
+        return "f${(activeIndex * 10000L) + activePager.currentItem}"
+    }
+
+    private fun openDrawer() {
+        populateDrawer()
+        // Re-apply width each open so an orientation change can't leave a
+        // stale panel width from the previous configuration.
+        (drawerPanel.layoutParams as? android.widget.FrameLayout.LayoutParams)?.width = drawerWidthPx()
+        drawerPanel.translationX = -drawerWidthPx().toFloat()
+        drawerOpen = true
+        drawerScrim.visibility = View.VISIBLE
+        drawerPanel.visibility = View.VISIBLE
+        drawerPanel.animate().translationX(0f).setDuration(180).start()
+    }
+
+    private fun closeDrawer() {
+        drawerOpen = false
+        drawerScrim.visibility = View.GONE
+        drawerPanel.animate()
+            .translationX(-drawerWidthPx().toFloat())
+            .setDuration(160)
+            .withEndAction { if (!drawerOpen) drawerPanel.visibility = View.GONE }
+            .start()
+    }
+
+    /** Drawer panel width: 45% of the screen, same value the slide offsets use. */
+    private fun drawerWidthPx(): Int = resources.displayMetrics.widthPixels * 45 / 100
+
+    private fun populateDrawer() {
+        val rows = mutableListOf<DrawerRow>()
+        rows += DrawerRow("PLACES", null, true)
+        rows += DrawerRow("Internal storage", Environment.getExternalStorageDirectory().absolutePath, false)
+        rows += DrawerRow("Recycle bin", java.io.File(
+            Environment.getExternalStorageDirectory(), ".TroveTrash").absolutePath, false)
+        val bookmarks = Prefs.bookmarks().toList().sorted()
+        if (bookmarks.isNotEmpty()) rows += DrawerRow("BOOKMARKS", null, true)
+        bookmarks.forEach { b ->
+            rows += DrawerRow(b.substringBefore('|'), b.substringAfter('|'), false)
+        }
+        drawerList.adapter = object : android.widget.BaseAdapter() {
+            override fun getCount(): Int = rows.size
+            override fun getItem(position: Int): Any = rows[position]
+            override fun getItemId(position: Int): Long = position.toLong()
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val row = rows[position]
+                return if (row.header) {
+                    (convertView as? TextView ?: TextView(this@BrowseActivity)).apply {
+                        text = row.label
+                        setTextColor(android.graphics.Color.parseColor("#81A1C1"))
+                        textSize = 12f
+                        setPadding(40, 32, 24, 8)
+                        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                        isEnabled = false
+                    }
+                } else {
+                    (convertView as? TextView ?: TextView(this@BrowseActivity)).apply {
+                        text = row.label
+                        setTextColor(android.graphics.Color.parseColor("#ECEFF4"))
+                        textSize = 15f
+                        setPadding(40, 24, 24, 24)
+                    }
+                }
+            }
+        }
+        drawerList.setOnItemClickListener { _, _, position, _ ->
+            val row = rows[position]
+            if (!row.header && row.path != null) {
+                closeDrawer()
+                addNewTab(dualPaneState.activePaneIndex, LocalFileItem(java.io.File(row.path)))
+            }
+        }
+        drawerList.setOnItemLongClickListener { _, _, position, _ ->
+            val row = rows[position]
+            if (!row.header) {
+                Prefs.removeBookmark(row.label, row.path!!)
+                populateDrawer()
+                Toast.makeText(this, "Bookmark removed", Toast.LENGTH_SHORT).show()
+                true
+            } else false
+        }
+    }
+
+    data class DrawerRow(val label: String, val path: String?, val header: Boolean)
+
+    /** MiX tab menu: add / reset / close variants / jump-to, per pane. */
+    private fun showTabMenu(anchor: android.view.View, paneIndex: Int) {
+        val (tabList, bar, pager) = paneParts(paneIndex)
+        val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
+        popup.menu.add(0, 1, 0, "Add new tab")
+        popup.menu.add(0, 2, 0, "Reset tabs")
+        popup.menu.add(0, 3, 0, "Close tab")
+        popup.menu.add(0, 4, 0, "Close others")
+        popup.menu.add(0, 5, 0, "Close left tabs")
+        popup.menu.add(0, 6, 0, "Jump to…")
+        popup.setOnMenuItemClickListener { item ->
+            fun closeInPane(index: Int) {
+                if (tabList.size <= 1) {
+                    Toast.makeText(this, "Cannot close the last tab", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                tabList.removeAt(index)
+                bar.removeTab(index)
+                pager.adapter?.notifyItemRemoved(index)
+                val target = index.coerceAtMost(tabList.size - 1)
+                pager.currentItem = target
+                bar.selectTab(target, notify = false)
+            }
+            when (item.itemId) {
+                1 -> addNewTab(paneIndex, LocalFileItem(Environment.getExternalStorageDirectory()))
+                2 -> {
+                    val current = pager.currentItem
+                    for (i in tabList.indices.reversed()) {
+                        if (i != current) closeInPane(i)
+                    }
+                }
+                3 -> closeInPane(pager.currentItem)
+                4 -> {
+                    val current = pager.currentItem
+                    for (i in tabList.indices.reversed()) {
+                        if (i != current) closeInPane(i)
+                    }
+                }
+                5 -> {
+                    val current = pager.currentItem
+                    for (i in current - 1 downTo 0) closeInPane(i)
+                }
+                6 -> {
+                    val labels = tabList.map { t -> if (t.name.isEmpty()) "Root" else t.name }
+                    androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle("Jump to tab")
+                        .setItems(labels.toTypedArray()) { _, which ->
+                            pager.currentItem = which
+                            bar.selectTab(which, notify = false)
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
+            true
+        }
+        popup.show()
     }
 
     private fun createTabBar(paneIndex: Int): TroveTabBar {
@@ -419,13 +693,19 @@ class BrowseActivity : AppCompatActivity(),
         openTab(dualPaneState.activePaneIndex, root, label)
     }
 
-    private fun addNewTab(paneIndex: Int, root: FileItem) {
+    /** Concrete-class entry point for the Home dashboard (interface casts
+     *  failed at runtime under R8 full mode — ClassCastException). */
+    fun openTabFromHome(root: FileItem, label: String) {
+        openTab(dualPaneState.activePaneIndex, root, label)
+    }
+
+    private fun addNewTab(paneIndex: Int, root: FileItem, label: String? = null) {
         val tabList = if (paneIndex == 0) pane0Tabs else pane1Tabs
         val bar = if (paneIndex == 0) tabBar0 else tabBar1
         val pager = if (paneIndex == 0) viewPager0 else viewPager1
 
         tabList.add(root)
-        val title = if (root.name.isEmpty()) "Root" else root.name
+        val title = label ?: if (root.name.isEmpty()) "Root" else root.name
         bar.addTab(title)
         pager.adapter?.notifyItemInserted(tabList.size - 1)
         pager.currentItem = tabList.size - 1
@@ -514,11 +794,7 @@ class BrowseActivity : AppCompatActivity(),
         val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
         val menu = popup.menu
 
-        val sort = menu.addSubMenu("Sort by")
-        sort.add(0, 1, 0, "Name").isChecked = BrowseFragment.sortBy == "name"
-        sort.add(0, 2, 0, "Size").isChecked = BrowseFragment.sortBy == "size"
-        sort.add(0, 3, 0, "Date modified").isChecked = BrowseFragment.sortBy == "date"
-        sort.setGroupCheckable(0, true, true)
+        menu.add(0, 19, 0, "Sort…")
 
         menu.add(0, 4, 0, "Show hidden files")
             .setCheckable(true).isChecked = BrowseFragment.showHidden
@@ -544,10 +820,11 @@ class BrowseActivity : AppCompatActivity(),
         bookmarks.add(0, 13, 0, "Go to bookmark…")
 
         val tools = menu.addSubMenu("Tools")
+        tools.add(0, 21, 0, "Cleaner")
         tools.add(0, 17, 0, "Checksum (selected file)")
         tools.add(0, 18, 0, "Open in terminal")
 
-        menu.add(0, 19, 0, "Dual pane")
+        menu.add(0, 20, 0, "Dual pane")
             .setCheckable(true).isChecked = dualPaneState.isDualPane
 
         menu.add(0, 14, 0, "Settings")
@@ -580,7 +857,11 @@ class BrowseActivity : AppCompatActivity(),
                 16 -> fragment?.openRecycleBin()
                 17 -> fragment?.checksumSelection()
                 18 -> fragment?.openInTerminal()
-                19 -> toggleDualPane()
+                19 -> fragment?.showSortMenu(anchor)
+                20 -> toggleDualPane()
+                21 -> startActivity(
+                    android.content.Intent(this, com.trove.feature.cleaner.TroveCleanerActivity::class.java)
+                )
             }
             true
         }
@@ -594,6 +875,44 @@ class BrowseActivity : AppCompatActivity(),
             val f1 = supportFragmentManager.findFragmentByTag("f${10000 + viewPager1.currentItem}") as? BrowseFragment
             if (action != null) f1?.onMenuAction(action) else f1?.reload()
         }
+    }
+
+    /**
+     * Opens the SAF tree picker at a location the system actually allows to
+     * be mounted. Launched with no initial URI it lands on the storage root,
+     * where Android 11+ blocks tree picking ("Can't use this folder") and the
+     * disabled USE THIS FOLDER button renders as an unreadable black pill.
+     * Start in the browsed folder (or the last mounted SAF root) instead so
+     * the button is live from the start; from the blocked root, say why.
+     */
+    private fun launchSafPicker() {
+        val storageRootPath = Environment.getExternalStorageDirectory().absolutePath
+        val current = (supportFragmentManager.findFragmentByTag(activePaneFragmentTag()) as? BrowseFragment)
+            ?.activeDirectory as? LocalFileItem
+
+        // DocumentsUI ignores file:// initial URIs; it only honours document
+        // URIs of its externalstorage provider (primary:<relative path>).
+        val relPath = current?.path
+            ?.takeIf { it.startsWith(storageRootPath) && it != storageRootPath }
+            ?.removePrefix(storageRootPath)
+            ?.trim('/')
+
+        val initial: Uri? = if (relPath != null) {
+            android.provider.DocumentsContract.buildDocumentUri(
+                "content://com.android.externalstorage.documents", "primary:$relPath"
+            )
+        } else {
+            getPreferences(MODE_PRIVATE).getString("saf_root", null)?.let(Uri::parse)
+        }
+
+        if (initial == null && (current == null || current.path == storageRootPath)) {
+            Toast.makeText(
+                this,
+                "Android blocks SAF mounting of the storage root — enter any subfolder first (USE THIS FOLDER activates there)",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+        openDocumentTreeLauncher.launch(initial)
     }
 
     private fun addNewSafTab(uri: Uri) {
@@ -621,7 +940,12 @@ class BrowseActivity : AppCompatActivity(),
             return pos in tabList.indices
         }
         override fun createFragment(position: Int): Fragment {
-            return BrowseFragment.newInstance(tabList[position], paneIndex)
+            val root = tabList[position]
+            return if (root.path == TroveHomeFragment.HOME_PATH) {
+                TroveHomeFragment.newInstance()
+            } else {
+                BrowseFragment.newInstance(root, paneIndex)
+            }
         }
     }
 }

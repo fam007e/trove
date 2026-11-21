@@ -41,7 +41,10 @@ class TroveBreadcrumbBar @JvmOverloads constructor(
     }
 
     private var segments: List<String> = emptyList()
-    private val segmentRects = mutableListOf<RectF>()
+
+    /** Rect → segment index it navigates to (the ellipsis maps to the first
+     *  hidden ancestor). Kept inside the view bounds — never spilling over. */
+    private val segmentRects = mutableListOf<Pair<RectF, Int>>()
     private var onSegmentClickListener: ((Int) -> Unit)? = null
 
     init {
@@ -71,43 +74,90 @@ class TroveBreadcrumbBar @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         segmentRects.clear()
+        if (segments.isEmpty()) return
 
-        var currentX = context.dp(16f)
+        // Overflowing text would paint under the sibling disk-usage chip, so
+        // drawing is clipped and long paths keep their TAIL (deepest folders)
+        // with a leading ellipsis for the hidden ancestors.
+        canvas.save()
+        canvas.clipRect(0f, 0f, width.toFloat(), height.toFloat())
+
+        val startPad = context.dp(12f)
+        val endPad = context.dp(8f)
+        val avail = (width - startPad - endPad).coerceAtLeast(0f)
         val centerY = height / 2f
         val separator = "  /  "
         val sepWidth = separatorPaint.measureText(separator)
+        val ellipsisWidth = textPaint.measureText("…")
 
-        for (i in segments.indices) {
-            val text = segments[i]
-            val isLast = (i == segments.size - 1)
-            val paint = if (isLast) activeTextPaint else textPaint
-            val textWidth = paint.measureText(text)
+        val widths = segments.mapIndexed { i, text ->
+            (if (i == segments.size - 1) activeTextPaint else textPaint).measureText(text)
+        }
 
-            // Record clickable area
-            val rect = RectF(currentX - context.dp(4f), 0f, currentX + textWidth + context.dp(4f), height.toFloat())
-            segmentRects.add(rect)
-
-            // Draw text
-            val baseline = centerY - (paint.descent() + paint.ascent()) / 2
-            canvas.drawText(text, currentX, baseline, paint)
-
-            currentX += textWidth
-
-            // Draw separator if not the last segment
-            if (!isLast) {
-                val sepBaseline = centerY - (separatorPaint.descent() + separatorPaint.ascent()) / 2
-                canvas.drawText(separator, currentX, sepBaseline, separatorPaint)
-                currentX += sepWidth
+        var from = 0
+        var lastText = segments.last()
+        var lastWidth = widths.last()
+        if (widths.sum() + sepWidth * (segments.size - 1) > avail) {
+            from = segments.size - 1
+            var sum = lastWidth + ellipsisWidth + sepWidth
+            while (from > 0 && sum + widths[from - 1] + sepWidth <= avail) {
+                sum += widths[from - 1] + sepWidth
+                from--
+            }
+            if (from == segments.size - 1 && sum > avail) {
+                // Even the active segment alone overflows: shorten it in place
+                // so the current directory always stays readable.
+                lastText = android.text.TextUtils.ellipsize(
+                    segments.last(), activeTextPaint,
+                    (avail - ellipsisWidth - sepWidth).coerceAtLeast(0f),
+                    android.text.TextUtils.TruncateAt.START
+                ).toString()
+                lastWidth = activeTextPaint.measureText(lastText)
             }
         }
+
+        var x = startPad
+        if (from > 0) {
+            val baseline = centerY - (textPaint.descent() + textPaint.ascent()) / 2
+            canvas.drawText("…", x, baseline, textPaint)
+            segmentRects.add(
+                RectF(0f, 0f, x + ellipsisWidth + sepWidth / 2, height.toFloat()) to (from - 1)
+            )
+            x += ellipsisWidth + sepWidth
+        }
+        for (i in from until segments.size) {
+            val isLast = (i == segments.size - 1)
+            val paint = if (isLast) activeTextPaint else textPaint
+            val text = if (isLast) lastText else segments[i]
+            val textWidth = if (isLast) lastWidth else widths[i]
+
+            val baseline = centerY - (paint.descent() + paint.ascent()) / 2
+            canvas.drawText(text, x, baseline, paint)
+
+            segmentRects.add(
+                RectF(
+                    x - context.dp(4f), 0f,
+                    minOf(x + textWidth + context.dp(4f), width.toFloat()),
+                    height.toFloat()
+                ) to i
+            )
+            x += textWidth
+
+            if (!isLast) {
+                val sepBaseline = centerY - (separatorPaint.descent() + separatorPaint.ascent()) / 2
+                canvas.drawText(separator, x, sepBaseline, separatorPaint)
+                x += sepWidth
+            }
+        }
+        canvas.restore()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action == MotionEvent.ACTION_UP) {
             val x = event.x
             val y = event.y
-            for (i in segmentRects.indices) {
-                if (segmentRects[i].contains(x, y)) {
+            for ((rect, index) in segmentRects) {
+                if (rect.contains(x, y)) {
                     // Subtle tap feedback
                     animate()
                         .alpha(0.85f)
@@ -116,7 +166,7 @@ class TroveBreadcrumbBar @JvmOverloads constructor(
                             animate().alpha(1.0f).setDuration(100).start()
                         }
                         .start()
-                    onSegmentClickListener?.invoke(i)
+                    onSegmentClickListener?.invoke(index)
                     return true
                 }
             }
