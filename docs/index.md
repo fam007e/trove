@@ -2,6 +2,10 @@
 title: Trove
 ---
 
+<p align="center">
+  <img src="assets/logo.png" width="128" alt="Trove logo">
+</p>
+
 # Trove
 
 **A clean-room, reproducible Android file manager** — local, network, cloud and archive storage behind one unified filesystem abstraction, with built-in media engines, an encrypted vault, embedded servers, storage cleaning, and a privilege layer for Shizuku/root. Apache-2.0 licensed.

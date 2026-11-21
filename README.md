@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.png" width="128" alt="Trove logo">
+</p>
+
 # Trove
 
 [![CI](https://github.com/fam007e/trove/actions/workflows/ci.yml/badge.svg)](https://github.com/fam007e/trove/actions/workflows/ci.yml)
