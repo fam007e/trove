@@ -56,15 +56,18 @@ APK signature matches cert `cfbbcd...7587` → cert is GPG-signed by
   (Android enforces same-signature updates).**
 - `signing/keystore.properties` (gitignored) points the Gradle build at the keystore.
 - Every release APK and this directory's artifacts are GPG-detach-signed by the key above.
-### 4. Release evidence (v1.0.0, build 100, 2026-11-18)
+### 4. Release evidence
 
 | Artifact | SHA-256 |
 |---|---|
-| `app-release.apk` (v1.0.0, versionCode 100) | `74b67e1a3c0484a3f150f24568797d01f0898f587c7dee873ac90b27843c20c8` |
+| `app-release.apk` (v1.0.0, versionCode 100, 2026-11-18, local build) | `74b67e1a3c0484a3f150f24568797d01f0898f587c7dee873ac90b27843c20c8` |
+| `Trove-v2026.11.21.apk` (v2026.11.21, versionCode 20261121, 2026-11-21, first CI tag release) | `d48411662e2167ac3f945a9d9985806933b353654d1cec4d4ac30888f040a273` |
 | `trove-release.crt` | `cfbbcd6b7a74a7b1047c2fdab51c5c948b366be66504b9b716c7337c2fc87587` |
 
 Both the APK and this certificate carry GPG detached signatures in this
-directory (`*.gpgsig`), made by the GPG key above.
+directory (`*.gpgsig`), made by the GPG key above. (v1.0.0; from
+v2026.11.21 on, each release's APK + SHA256SUMS GPG signatures are
+attached to its GitHub release instead.)
 
 - Container migrated JKS -> PKCS12 on 2026-11-18 (keytool deprecates JKS algorithms);
   certificate and fingerprint are byte-identical, so update compatibility is unaffected.
