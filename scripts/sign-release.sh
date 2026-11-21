@@ -73,6 +73,14 @@ if [ "$ACTUAL_FP" != "$EXPECTED_FP" ]; then
 fi
 echo "    cert fingerprint OK: $ACTUAL_FP"
 
+# Publish under the release name so SHA256SUMS matches the uploaded asset
+# (gh's "path#label" rename is not honoured by all gh versions).
+if [ -n "$TAG" ]; then
+  RENAMED="$OUT_DIR/Trove-$TAG.apk"
+  mv "$SIGNED" "$RENAMED"
+  SIGNED="$RENAMED"
+fi
+
 echo "==> Checksums and signatures"
 cd "$OUT_DIR"
 sha256sum "$SIGNED" | sed "s|$SIGNED|$(basename "$SIGNED")|" > SHA256SUMS
@@ -95,7 +103,7 @@ if [ -n "$TAG" ]; then
       "SHA256SUMS#SHA256SUMS" \
       "$(basename "$SIGNED").gpgsig#Trove-$TAG.apk.gpgsig" \
       "SHA256SUMS.gpgsig#SHA256SUMS.gpgsig" \
-      --title "Trove $TAG" --generate-notes --verify-tags
+      --title "Trove $TAG" --generate-notes --verify-tag
     echo "    release published: verify users check SHA256SUMS + gpg sig"
   else
     echo "gh not found; upload manually from $OUT_DIR"
