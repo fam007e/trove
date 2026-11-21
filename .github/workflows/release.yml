@@ -48,23 +48,29 @@ jobs:
           -Ptrove.versionName="${{ steps.tag.outputs.name }}"
           -Ptrove.versionCode="${{ steps.tag.outputs.code }}"
 
+      # AGP names an unsigned release APK app-release-unsigned.apk (the
+      # signed app-release.apk only exists locally, where keystore.properties
+      # configures signing). Discover it instead of hardcoding the name.
       - name: Confirm APK is unsigned (signing happens locally)
+        id: apk
         run: |
-          APK=app/build/outputs/apk/release/app-release.apk
+          APK=$(ls app/build/outputs/apk/release/*.apk 2>/dev/null | head -1)
+          [ -f "$APK" ] || { echo "::error::No APK in app/build/outputs/apk/release/"; exit 1; }
           APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
           if "$APKSIGNER" verify --print-certs "$APK" 2>/dev/null | grep -q "certificate"; then
             echo "::error::APK must NOT be signed in CI"; exit 1
           fi
-          echo "OK: unsigned APK built at tag ${{ github.ref_name }}"
+          echo "OK: unsigned APK at $APK (tag ${{ github.ref_name }})"
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
 
       - name: Compute checksum
-        run: sha256sum app/build/outputs/apk/release/app-release.apk
+        run: sha256sum ${{ steps.apk.outputs.path }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: trove-${{ github.ref_name }}-unsigned
-          path: app/build/outputs/apk/release/app-release.apk
+          path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
 
       # Maintainer next steps (local, not CI):
